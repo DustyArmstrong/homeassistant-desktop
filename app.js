@@ -83,9 +83,9 @@ function checkAutoStart() {
     .then((isEnabled) => {
       autostartEnabled = isEnabled;
     })
-    .catch((err) => {
+    .catch((error) => {
       logger.error("There was a problem with application auto start");
-      logger.error(err);
+      logger.error(error);
     });
 }
 
@@ -118,10 +118,10 @@ async function getResponse(instance, timeoutMs = 5000) {
           resolve(res.statusCode);
         });
       });
-      const onError = (err) => {
+      const onError = (error) => {
         cleanup();
-        logger.error("Response error: " + err);
-        reject(err);
+        logger.error("Response error: " + error);
+        reject(error);
       };
       const onTimeout = () => {
         const err = new Error('Request timed out');
@@ -137,9 +137,9 @@ async function getResponse(instance, timeoutMs = 5000) {
       req.on('error', onError);
       req.setTimeout(timeoutMs, onTimeout);
       req.end();
-    } catch (err) {
-      reject(err);
-      logger.error("Unknown error: " + err);
+    } catch (error) {
+      reject(error);
+      logger.error("Unknown error: " + error);
     }
   });
 }
@@ -618,15 +618,11 @@ async function createMainWindow(show = false) {
     },
   });
 
-  mainWindow.webContents.on('did-fail-load', (e, errorCode, validatedURL) => {
-    logger.error(`WebContents failed to load ${validatedURL} (code ${errorCode})`);
-  });
-
   //mainWindow.webContents.openDevTools();
 
   const tryLoadURL = async (attempt = 1, maxAttempts = 5) => {
     try {
-      logger.info('Loading index URL...', { indexFile, attempt });
+      logger.info('Loading index URL...', { indexFile, attempt }); //change this back as unecessarily verbose
       await mainWindow.loadURL(indexFile);
       logger.info("Initialized main window");
       return true;
@@ -647,13 +643,25 @@ async function createMainWindow(show = false) {
   };
   await tryLoadURL();
 
-//  try {
-//    await mainWindow.loadURL(indexFile);
-//  } catch (error) {
-//    logger.error(error);
-//  }
-//
   createTray();
+
+  let winIsReloading = false;
+  mainWindow.webContents.on('did-fail-load', async (e, errorCode, validatedURL) => {
+    logger.error(`WebContents failed to load ${validatedURL} (code ${errorCode})`);
+    if (winIsReloading) {
+      logger.info("Window is currently reloading...");
+      return;
+    }
+    winIsReloading = true;
+    try {
+      await tryLoadURL(1);
+    } catch (error) {
+      logger.error("Failed to reload window", error);
+      showError(true);
+    } finally {
+      winIsReloading = false;
+    }
+  });
 
   mainWindow.webContents.on('render-process-gone', (event, detailed) => {
     logger.error("Renderer dead, reason: " + detailed.reason);
@@ -662,8 +670,8 @@ async function createMainWindow(show = false) {
         try {
           mainWindow.webContents.reload();
           logger.info("Renderer rebooted successfully.");
-        } catch (e) {
-          logger.error('Renderer reload failed', e);
+        } catch (error) {
+          logger.error('Renderer reload failed', error);
           showError(true);
         }
      }
@@ -959,9 +967,9 @@ powerMonitor.on('resume', async () => {
         showError(true);
         handleUnavailable(statusCode);
       }
-    } catch (err) {
+    } catch (error) {
       showError(true);
-      logger.error("Error while trying to resume: " + err);
+      logger.error("Error while trying to resume: " + error);
       app.relaunch();
       app.exit();
     }
