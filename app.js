@@ -1,4 +1,4 @@
-import { app, dialog, ipcMain, shell, globalShortcut, screen, net, Menu, Tray, BrowserWindow, powerMonitor } from "electron";
+import { app, dialog, ipcMain, shell, globalShortcut, screen, Menu, Tray, BrowserWindow, powerMonitor } from "electron";
 import AutoLaunch from "auto-launch";
 import Positioner from "electron-traywindow-positioner";
 import Bonjour from "bonjour-service";
@@ -7,7 +7,6 @@ import config  from "./config.js";
 import semver from "semver";
 import http from 'http';
 import https from 'https';
-import winston from 'winston';
 import path from 'path';
 const bonjour = new Bonjour.Bonjour();
 //scaling options for different app versions
@@ -98,36 +97,60 @@ async function availabilityCheck() {
   }
 
   try {
-      const statusCode = await getResponse(instance);
+      const statusCode = await getResponse(instance, 5000);
       if (statusCode !== 200) {
-          logger.error("Instance unavailable: " + statusCode);
-          clearInterval(availabilityCheckerInterval);
-          availabilityCheckerInterval = null;
-          await showError(true);
-          if (config.get("autoReconnect") === true) {
-            retryAvailabilityCheck();
-          }
-          if (config.get("automaticSwitching")) {
-              checkForAvailableInstance();
-          }
+        handleUnavailable(statusCode);
       }
   } catch (error) {
     logger.error("Error during availability check:", error);
+    handleUnavailable(error);
   }
 }
 
-async function getResponse(instance) {
+async function getResponse(instance, timeoutMs = 5000) {
   return new Promise((resolve, reject) => {
+    try {
       const url = new URL(instance);
-      const request = (url.protocol === 'https:' ? https : http).request(`${url.origin}/auth/providers`, (res) => {
-          const statusCode = res.statusCode;
-          resolve(statusCode);
+      const req = (url.protocol === 'https:' ? https : http).request(`${url.origin}/auth/providers`, (res) => {
+        res.on('data', () => {});
+        res.on('end', () => {
+          cleanup();
+          resolve(res.statusCode);
+        });
       });
-      request.on("error", (error) => {
-          reject(error);
-      });
-      request.end();
+      const onError = (err) => {
+        cleanup();
+        logger.error("Response error: " + err);
+        reject(err);
+      };
+      const onTimeout = () => {
+        const err = new Error('Request timed out');
+        err.code = 'RESTIMEDOUT';
+        logger.error("Response timed out: " + err.code);
+        req.destroy(err);
+      };
+      const cleanup = () => {
+        req.removeListener('error', onError);
+        req.removeListener('timeout', onTimeout);
+      };
+
+      req.on('error', onError);
+      req.setTimeout(timeoutMs, onTimeout);
+      req.end();
+    } catch (err) {
+      reject(err);
+      logger.error("Unknown error: " + err);
+    }
   });
+}
+
+function handleUnavailable(reason) {
+  logger.error("Instance unavailable: " + reason);
+  clearInterval(availabilityCheckerInterval);
+  availabilityCheckerInterval = null;
+  showError(true);
+  if (config.get('autoReconnect') === true) retryAvailabilityCheck();
+  if (config.get('automaticSwitching')) checkForAvailableInstance();
 }
 
 async function retryAvailabilityCheck() {
@@ -137,7 +160,7 @@ async function retryAvailabilityCheck() {
   let retryData;
   while (retryCount <= maxRetries) {
       try {
-          const statusCode = await getResponse(instance);
+          const statusCode = await getResponse(instance, 5000);
           if (statusCode !== 200) {
             if (retryCount === 5) {
               logger.error(`Cannot automatically connect to instance.`);
@@ -220,7 +243,7 @@ async function checkForAvailableInstance() {
     });
     let found;
     for (const instance of instances.filter((e) => e.url !== currentInstance())) {
-      const statusCode = await getResponse(instance);
+      const statusCode = await getResponse(instance, 5000);
       if (statusCode === 200) {
         found = instance;
       };
@@ -420,6 +443,40 @@ function getMenu() {
       ]
     },
     {
+      label: "Appearance",
+      submenu: [
+        {
+          label: "Tray Icon",
+          submenu: [
+            {
+              label: "White",
+              type: "radio",
+              checked: config.get("userTrayIcon") === (process.platform === 'darwin' ? "IconTemplate.png" : "IconWin.png"),
+              click: () => {
+                if (process.platform === 'darwin') {
+                  changeIcon("IconTemplate.png");
+                } else {
+                  changeIcon("IconWin.png");
+                }
+              }
+            },
+            {
+              label: "Blue",
+              type: "radio",
+              checked: config.get("userTrayIcon") === "IconWinAlt.png",
+              click: () => changeIcon("IconWinAlt.png"),
+            },
+            {
+              label: "Black",
+              type: "radio",
+              checked: config.get("userTrayIcon") === "IconWinBlack.png",
+              click: () => changeIcon("IconWinBlack.png"),
+            },
+          ]
+        }
+      ]
+    },
+    {
       type: "separator",
     },
     {
@@ -544,7 +601,7 @@ function getMenu() {
 }
 
 async function createMainWindow(show = false) {
-  logger.info("Initialized main window");
+  logger.info("Loading main window...");
   mainWindow = new BrowserWindow({
     width: 420,
     height: 460,
@@ -561,20 +618,54 @@ async function createMainWindow(show = false) {
     },
   });
 
-  //mainWindow.webContents.openDevTools();
-  try {
-    await mainWindow.loadURL(indexFile);
-  } catch (error) {
-    logger.info(error);
-  }
+  mainWindow.webContents.on('did-fail-load', (e, errorCode, validatedURL) => {
+    logger.error(`WebContents failed to load ${validatedURL} (code ${errorCode})`);
+  });
 
+  //mainWindow.webContents.openDevTools();
+
+  const tryLoadURL = async (attempt = 1, maxAttempts = 5) => {
+    try {
+      logger.info('Loading index URL...', { indexFile, attempt });
+      await mainWindow.loadURL(indexFile);
+      logger.info("Initialized main window");
+      return true;
+    } catch (error) {
+      logger.error(`Error loading main window (attempt ${attempt}):`, error);
+      if (attempt < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 100 * attempt));
+        return tryLoadURL(attempt + 1, maxAttempts);
+      }
+      try {
+        logger.error('Unable to load window, cannot resolve network');
+        showError(true);
+      } catch (error) {
+        logger.error('Error page could not be loaded', error);
+      }
+      return false;
+    }
+  };
+  await tryLoadURL();
+
+//  try {
+//    await mainWindow.loadURL(indexFile);
+//  } catch (error) {
+//    logger.error(error);
+//  }
+//
   createTray();
 
   mainWindow.webContents.on('render-process-gone', (event, detailed) => {
-    logger.info("Renderer dead, reason: " + detailed.reason);
-    if (detailed.reason === 'crashed') {
-        mainWindow.webContents.reload();
-        logger.info("Renderer rebooted successfully.");
+    logger.error("Renderer dead, reason: " + detailed.reason);
+    const RELOAD_REASONS = new Set(['crashed', 'abnormal-exit', 'oom', 'launch-failed']);
+    if (RELOAD_REASONS.has(detailed.reason)) {
+        try {
+          mainWindow.webContents.reload();
+          logger.info("Renderer rebooted successfully.");
+        } catch (e) {
+          logger.error('Renderer reload failed', e);
+          showError(true);
+        }
      }
   });
 
@@ -589,9 +680,6 @@ async function createMainWindow(show = false) {
     if (config.get("detachedMode") && process.platform === "darwin") {
       await mainWindow.webContents.insertCSS("body { -webkit-app-region: drag; }");
     }
-
-    // let code = `document.addEventListener('mousemove', () => { ipcRenderer.send('mousemove'); });`;
-    // mainWindow.webContents.executeJavaScript(code);
   });
 
   if (config.get("detachedMode")) {
@@ -702,8 +790,9 @@ function createTray() {
   }
 
   logger.info("Initialized Tray menu");
+  const iconName = config.get("userTrayIcon");
   tray = new Tray(
-    ["win32", "linux"].includes(process.platform) ? `${__dirname}/assets/IconWin.png` : `${__dirname}/assets/IconTemplate.png`
+    ["win32", "linux"].includes(process.platform) ? `${__dirname}/assets/${iconName}` : `${__dirname}/assets/${iconName}`
   );
 
   tray.on("click", () => {
@@ -753,6 +842,14 @@ function createTray() {
       }
     }, 100);
   });
+}
+
+function changeIcon(iconName) {
+  config.set("userTrayIcon", iconName);
+  tray.setImage(
+    ["win32", "linux"].includes(process.platform) ? `${__dirname}/assets/${iconName}` : `${__dirname}/assets/${iconName}`
+  );
+  logger.info(`Changed tray icon to ${iconName}`);
 }
 
 function setWindowFocusTimer() {
@@ -828,13 +925,23 @@ async function showError(isError) {
   }
 }
 
+async function showSleep(isSleeping) {
+  if (!isSleeping && mainWindow.webContents.getURL().includes("sleeping.html")) {
+    mainWindow.loadURL(indexFile);
+  }
+
+  if (isSleeping && currentInstance() && !mainWindow.webContents.getURL().includes("sleeping.html")) {
+    mainWindow.loadURL(sleepFile);
+  }
+}
+
 let sleepHandled = false;
 let resumeHandled = false;
 
 powerMonitor.on('suspend', () => {
   if (!sleepHandled) {
     logger.info("Home Assistant going to sleep.");
-    mainWindow.loadURL(sleepFile);
+    showSleep(true);
     clearInterval(availabilityCheckerInterval);
     availabilityCheckerInterval = null;
     sleepHandled = true;
@@ -843,28 +950,21 @@ powerMonitor.on('suspend', () => {
 
 powerMonitor.on('resume', async () => {
   if (!resumeHandled) {
+    resumeHandled = true;
     logger.info("Power state resumed, re-launching...");
     const instance = currentInstance();
-    const maxRetries = 2;
-    let attempts = 0;
-
-    while (attempts < maxRetries) {
-      try {
-        const statusCode = await getResponse(instance);
-        if (statusCode === 200) {
-          app.relaunch();
-          app.exit();
-          return;
-        }
-      } catch (error) {
+    try {
+      const statusCode = await getResponse(instance, 5000);
+      if (statusCode !== 200) {
+        showError(true);
+        handleUnavailable(statusCode);
       }
-      attempts++;
-      await new Promise(resolve => setTimeout(resolve, 100));
+    } catch (err) {
+      showError(true);
+      logger.error("Error while trying to resume: " + err);
+      app.relaunch();
+      app.exit();
     }
-    logger.error("Network wasn't ready, retrying...");
-    app.relaunch();
-    app.exit();
-    resumeHandled = true;
   }
 });
 
@@ -880,7 +980,7 @@ const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
   app.quit();
 } else {
-  app.on('second-instance', (event, commandLine, workingDirectory) => {
+  app.on('second-instance', (_event, _commandLine, _workingDirectory) => {
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.focus();

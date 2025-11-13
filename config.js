@@ -13,6 +13,7 @@ const store = new Store({
     shortcutEnabled: true,
     shortcutFullscreenEnabled: false,
     userShortcut: "CommandOrControl+Alt+X",
+    userTrayIcon: "IconWin.png",
     allInstances: [],
   },
 });
