@@ -81,8 +81,7 @@ async function checkForUpdates() {
         } 
       }
     } catch (error) {
-      logger.error("There was a problem checking for updates");
-      logger.error(error);
+      logger.error("UPDT - " + error);
     }
   }
 
@@ -93,8 +92,7 @@ function checkAutoStart() {
       autostartEnabled = isEnabled;
     })
     .catch((error) => {
-      logger.error("There was a problem with application auto start");
-      logger.error(error);
+      logger.error("AUTOST - " + error);
     });
 }
 
@@ -112,7 +110,7 @@ async function availabilityCheck() {
         handleUnavailable(statusCode);
       }
   } catch (error) {
-    logger.error("Error during availability check:", error);
+    logger.error("AVCHK - ", error);
     handleUnavailable(error);
   }
 }
@@ -130,13 +128,11 @@ async function getResponse(instance, timeoutMs = 5000) {
       });
       const onError = (error) => {
         cleanup();
-        logger.error("Response error: " + error);
+        logger.error("NET - " + error);
         reject(error);
       };
       const onTimeout = () => {
         const err = new Error('Request timed out');
-        err.code = 'RESTIMEDOUT';
-        logger.error("Response timed out: " + err.code);
         req.destroy(err);
       };
       const cleanup = () => {
@@ -149,13 +145,13 @@ async function getResponse(instance, timeoutMs = 5000) {
       req.end();
     } catch (error) {
       reject(error);
-      logger.error("Unknown error: " + error);
+      logger.error("NET - " + error);
     }
   });
 }
 
 function handleUnavailable(reason) {
-  logger.error("Instance unavailable: " + reason);
+  logger.error("INSTAV - " + reason);
   if (retryingAvailability) {
     return;
   }
@@ -184,14 +180,14 @@ async function retryAvailabilityCheck() {
           break;
         }
         if (retryCount === maxRetries) {
-          logger.error("Cannot automatically connect to instance.");
+          logger.error("RETRY - Cannot automatically connect to instance.");
           mainWindow.webContents.send('retry-update', "Unable to connect to instance!");
         } else {
           mainWindow.webContents.send('retry-update', `Trying to reconnect ${retryCount} of ${maxRetries}`);
           await new Promise(r => setTimeout(r, 4000));
         }
       } catch (error) {
-        logger.error('Error trying to reconnect:', error);
+        logger.error("RETRY - ", error);
         mainWindow.webContents.send('retry-error', "Connection to instance failed.");
       }
       retryCount++;
@@ -667,16 +663,16 @@ async function createMainWindow(show = false) {
       logger.info("Initialized main window");
       return true;
     } catch (error) {
-      logger.error(`Error loading main window (${attempt}):`, error);
+      logger.error(`MAINWIN - (${attempt}):`, error);
       if (attempt < maxAttempts) {
         await new Promise(resolve => setTimeout(resolve, 100 * attempt));
         return tryLoadURL(attempt + 1, maxAttempts);
       }
       try {
-        logger.error('Unable to load window, cannot resolve network');
+        logger.error('MAINWIN - Unable to load window, cannot resolve network');
         showError(true);
       } catch (error) {
-        logger.error('Error page could not be loaded', error);
+        logger.error('MAINWIN - ', error);
       }
       return false;
     }
@@ -686,7 +682,7 @@ async function createMainWindow(show = false) {
   createTray();
 
   mainWindow.webContents.on('did-fail-load', async (e, errorCode, validatedURL) => {
-    logger.error(`WebContents failed to load ${validatedURL} (code ${errorCode})`);
+    logger.error(`WEBCONT - ${validatedURL} (code ${errorCode})`);
     if (winIsReloading) {
       logger.info("Window is currently reloading...");
       return;
@@ -695,7 +691,7 @@ async function createMainWindow(show = false) {
     try {
       await tryLoadURL(1);
     } catch (error) {
-      logger.error("Failed to reload window", error);
+      logger.error("WEBCONT - ", error);
       showError(true);
     } finally {
       winIsReloading = false;
@@ -703,14 +699,14 @@ async function createMainWindow(show = false) {
   });
 
   mainWindow.webContents.on('render-process-gone', (event, detailed) => {
-    logger.error("Renderer dead, reason: " + detailed.reason);
+    logger.error("RENDR - " + detailed.reason);
     const RELOAD_REASONS = new Set(['crashed', 'abnormal-exit', 'oom', 'launch-failed']);
     if (RELOAD_REASONS.has(detailed.reason)) {
         try {
           mainWindow.webContents.reload();
           logger.info("Renderer rebooted successfully.");
         } catch (error) {
-          logger.error('Renderer reload failed', error);
+          logger.error('RENDR - ', error);
           showError(true);
         }
      }
@@ -999,13 +995,14 @@ powerMonitor.on('resume', async () => {
     const instance = currentInstance();
     try {
       const statusCode = await getResponse(instance, 5000);
-      if (statusCode !== 200) {
-        showError(true);
+      if (statusCode === 200) {
+        await reinitMainWindow();
+      } else {
         handleUnavailable(statusCode);
       }
     } catch (error) {
       showError(true);
-      logger.error("Error while trying to resume: " + error);
+      logger.error("WAKE - " + error);
       app.relaunch();
       app.exit();
     }
