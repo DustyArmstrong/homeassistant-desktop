@@ -9,9 +9,14 @@ import http from 'http';
 import https from 'https';
 import path from 'path';
 const bonjour = new Bonjour.Bonjour();
-//scaling options for different app versions
-//app.commandLine.appendSwitch('high-dpi-support', 'true');
-//app.commandLine.appendSwitch('force-device-scale-factor', 1);
+
+if (config.get("highDPIMode")) {
+  app.commandLine.appendSwitch('high-dpi-support', 'true');
+}
+
+if (config.get("forceScaling")) {
+  app.commandLine.appendSwitch('force-device-scaling-factor', 1);
+}
 
 logger.errorHandler.startCatching();
 logger.info(`${app.name} started`);
@@ -32,6 +37,10 @@ let initialized = false;
 let autostartEnabled = false;
 let forceQuit = false;
 let resizeEvent = false;
+let retryingAvailability = false;
+let sleepHandled = false;
+let resumeHandled = false;
+let winIsReloading = false;
 let mainWindow;
 let tray;
 let availabilityCheckerInterval;
@@ -88,6 +97,7 @@ function checkAutoStart() {
       logger.error(error);
     });
 }
+
 
 async function availabilityCheck() {
   const instance = currentInstance();
@@ -146,6 +156,9 @@ async function getResponse(instance, timeoutMs = 5000) {
 
 function handleUnavailable(reason) {
   logger.error("Instance unavailable: " + reason);
+  if (retryingAvailability) {
+    return;
+  }
   clearInterval(availabilityCheckerInterval);
   availabilityCheckerInterval = null;
   showError(true);
@@ -154,35 +167,37 @@ function handleUnavailable(reason) {
 }
 
 async function retryAvailabilityCheck() {
-  const instance = currentInstance();
-  let retryCount = 0;
-  const maxRetries = 5;
-  let retryData;
-  while (retryCount <= maxRetries) {
+  if (retryingAvailability) return;
+  retryingAvailability = true;
+  try {
+    const instance = currentInstance();
+    let retryCount = 0;
+    const maxRetries = 5;
+
+    while (retryCount <= maxRetries) {
       try {
-          const statusCode = await getResponse(instance, 5000);
-          if (statusCode !== 200) {
-            if (retryCount === 5) {
-              logger.error(`Cannot automatically connect to instance.`);
-              retryData = "Unable to connect to instance!";
-              mainWindow.webContents.send('retry-update', retryData);
-            } else {
-              logger.error(`Instance unavailable. Retry ${retryCount}...`);
-              retryData = `Trying to reconnect ${retryCount} of ${maxRetries}`;
-              mainWindow.webContents.send('retry-update', retryData);
-              await new Promise(resolve => setTimeout(resolve, 4000));
-            }
-          } else {
-              logger.info("Automatic reconnection successful!");
-              mainWindow.webContents.send('retry-success', "Instance alive, reconnecting.");
-              await reinitMainWindow();
-          }
+        const statusCode = await getResponse(instance, 5000);
+        if (statusCode === 200) {
+          logger.info("Automatic reconnection successful!");
+          mainWindow.webContents.send('retry-success', "Instance alive, reconnecting.");
+          await reinitMainWindow();
+          break;
+        }
+        if (retryCount === maxRetries) {
+          logger.error("Cannot automatically connect to instance.");
+          mainWindow.webContents.send('retry-update', "Unable to connect to instance!");
+        } else {
+          mainWindow.webContents.send('retry-update', `Trying to reconnect ${retryCount} of ${maxRetries}`);
+          await new Promise(r => setTimeout(r, 4000));
+        }
       } catch (error) {
-          logger.error('Error trying to reconnect:', error);
-          retryData = "Connection to instance failed.";
-          mainWindow.webContents.send('retry-error', retryData);
+        logger.error('Error trying to reconnect:', error);
+        mainWindow.webContents.send('retry-error', "Connection to instance failed.");
       }
       retryCount++;
+    }
+  } finally {
+    retryingAvailability = false;
   }
 }
 
@@ -473,6 +488,31 @@ function getMenu() {
               click: () => changeIcon("IconWinBlack.png"),
             },
           ]
+        },
+        {
+          label: "Scaling",
+          submenu: [
+            {
+              label: "Enable high DPI",
+              type: "radio",
+              checked: config.get("highDPIMode"),
+              click: () => {
+                config.set("highDPIMode", !config.get("highDPIMode"));
+                app.relaunch();
+                app.exit();
+              }
+            },
+            {
+              label: "Force scaling factor",
+              type: "radio",
+              checked: config.get("forceScaling"),
+              click: () => {
+                config.set("forceScaling", !config.get("forceScaling"));
+                app.relaunch();
+                app.exit();
+              }
+            }
+          ]
         }
       ]
     },
@@ -622,12 +662,12 @@ async function createMainWindow(show = false) {
 
   const tryLoadURL = async (attempt = 1, maxAttempts = 5) => {
     try {
-      logger.info('Loading index URL...', { indexFile, attempt }); //change this back as unecessarily verbose
+      logger.info('Loading index...', attempt);
       await mainWindow.loadURL(indexFile);
       logger.info("Initialized main window");
       return true;
     } catch (error) {
-      logger.error(`Error loading main window (attempt ${attempt}):`, error);
+      logger.error(`Error loading main window (${attempt}):`, error);
       if (attempt < maxAttempts) {
         await new Promise(resolve => setTimeout(resolve, 100 * attempt));
         return tryLoadURL(attempt + 1, maxAttempts);
@@ -645,7 +685,6 @@ async function createMainWindow(show = false) {
 
   createTray();
 
-  let winIsReloading = false;
   mainWindow.webContents.on('did-fail-load', async (e, errorCode, validatedURL) => {
     logger.error(`WebContents failed to load ${validatedURL} (code ${errorCode})`);
     if (winIsReloading) {
@@ -942,9 +981,6 @@ async function showSleep(isSleeping) {
     mainWindow.loadURL(sleepFile);
   }
 }
-
-let sleepHandled = false;
-let resumeHandled = false;
 
 powerMonitor.on('suspend', () => {
   if (!sleepHandled) {
