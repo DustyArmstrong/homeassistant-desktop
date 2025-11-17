@@ -41,6 +41,7 @@ let retryingAvailability = false;
 let sleepHandled = false;
 let resumeHandled = false;
 let winIsReloading = false;
+let avIsChecking = false;
 let mainWindow;
 let tray;
 let availabilityCheckerInterval;
@@ -104,49 +105,44 @@ async function availabilityCheck() {
       return;
   }
 
+  if (avIsChecking) {
+    return;
+  }
+
+  avIsChecking = true;
+
   try {
-      const statusCode = await getResponse(instance, 5000);
+      const statusCode = await getResponse(instance, 8000);
       if (statusCode !== 200) {
         handleUnavailable(statusCode);
       }
   } catch (error) {
     logger.error("AVCHK - ", error);
     handleUnavailable(error);
+  } finally {
+    avIsChecking = false;
   }
 }
 
-async function getResponse(instance, timeoutMs = 5000) {
+async function getResponse(instance, timeoutMs = 8000) {
   return new Promise((resolve, reject) => {
-    try {
-      const url = new URL(instance);
-      const req = (url.protocol === 'https:' ? https : http).request(`${url.origin}/auth/providers`, (res) => {
-        res.on('data', () => {});
-        res.on('end', () => {
-          cleanup();
-          resolve(res.statusCode);
-        });
-      });
-      const onError = (error) => {
-        cleanup();
-        logger.error("NET - " + error);
-        reject(error);
-      };
-      const onTimeout = () => {
-        const err = new Error('Request timed out');
-        req.destroy(err);
-      };
-      const cleanup = () => {
-        req.removeListener('error', onError);
-        req.removeListener('timeout', onTimeout);
-      };
+    const url = new URL(instance);
+    const request = (url.protocol === 'https:' ? https : http).request(`${url.origin}/auth/providers`, (res) => {
+      resolve(res.statusCode);
+    });
 
-      req.on('error', onError);
-      req.setTimeout(timeoutMs, onTimeout);
-      req.end();
-    } catch (error) {
+    request.setTimeout(timeoutMs, () => {
+      request.destroy();
+      const timeoutError = new Error('Request timed out');
+      reject(timeoutError);
+    });
+
+    request.on('error', (error) => {
+      request.destroy();
       reject(error);
-      logger.error("NET - " + error);
-    }
+    });
+
+    request.end();
   });
 }
 
@@ -172,7 +168,7 @@ async function retryAvailabilityCheck() {
 
     while (retryCount <= maxRetries) {
       try {
-        const statusCode = await getResponse(instance, 5000);
+        const statusCode = await getResponse(instance, 8000);
         if (statusCode === 200) {
           logger.info("Automatic reconnection successful!");
           mainWindow.webContents.send('retry-success', "Instance alive, reconnecting.");
@@ -187,8 +183,7 @@ async function retryAvailabilityCheck() {
           await new Promise(r => setTimeout(r, 4000));
         }
       } catch (error) {
-        logger.error("RETRY - ", error);
-        mainWindow.webContents.send('retry-error', "Connection to instance failed.");
+        mainWindow.webContents.send('retry-error', "Hard connection failure, instance unavailable.");
       }
       retryCount++;
     }
@@ -254,7 +249,7 @@ async function checkForAvailableInstance() {
     });
     let found;
     for (const instance of instances.filter((e) => e.url !== currentInstance())) {
-      const statusCode = await getResponse(instance, 5000);
+      const statusCode = await getResponse(instance, 8000);
       if (statusCode === 200) {
         found = instance;
       };
@@ -991,18 +986,18 @@ powerMonitor.on('suspend', () => {
 powerMonitor.on('resume', async () => {
   if (!resumeHandled) {
     resumeHandled = true;
-    logger.info("Power state resumed, re-launching...");
+    logger.info("Power state resumed, attempting to re-connect...");
     const instance = currentInstance();
     try {
-      const statusCode = await getResponse(instance, 5000);
+      const statusCode = await getResponse(instance, 8000);
       if (statusCode === 200) {
         await reinitMainWindow();
       } else {
         handleUnavailable(statusCode);
       }
     } catch (error) {
-      showError(true);
       logger.error("WAKE - " + error);
+      logger.info("WAKE - Application will now restart...");
       app.relaunch();
       app.exit();
     }
