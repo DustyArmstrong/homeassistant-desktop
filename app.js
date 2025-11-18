@@ -130,7 +130,7 @@ async function availabilityCheck() {
 
 async function getResponse(instance, timeoutMs = 8000) {
   const url = new URL(instance);
-  const target = `${url.origin}/auth/providers`
+  const target = `${url.origin}/auth/providers`;
 
   try {
     const res = await axios.get(target, {
