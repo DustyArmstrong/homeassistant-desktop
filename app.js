@@ -7,6 +7,7 @@ import config  from "./config.js";
 import semver from "semver";
 import http from 'http';
 import https from 'https';
+import axios from 'axios';
 import path from 'path';
 const bonjour = new Bonjour.Bonjour();
 
@@ -32,6 +33,9 @@ const __dirname = import.meta.dirname;
 const indexFile = `file://${__dirname}/web/index.html`;
 const errorFile = `file://${__dirname}/web/error.html`;
 const sleepFile = `file://${__dirname}/web/sleeping.html`;
+
+const httpAgent = new http.Agent({ keepAlive: true, maxSockets: 8 });
+const httpsAgent = new https.Agent({ keepAlive: true, maxSockets: 8 });
 
 let initialized = false;
 let autostartEnabled = false;
@@ -125,25 +129,29 @@ async function availabilityCheck() {
 }
 
 async function getResponse(instance, timeoutMs = 8000) {
-  return new Promise((resolve, reject) => {
-    const url = new URL(instance);
-    const request = (url.protocol === 'https:' ? https : http).request(`${url.origin}/auth/providers`, (res) => {
-      resolve(res.statusCode);
-    });
+  const url = new URL(instance);
+  const target = `${url.origin}/auth/providers`
 
-    request.setTimeout(timeoutMs, () => {
-      request.destroy();
+  try {
+    const res = await axios.get(target, {
+      timeout: timeoutMs,
+      validateStatus: null,
+      httpAgent,
+      httpsAgent,
+    });
+    return res.status;
+  } catch (error) {
+    if (error.code === 'ECONNABORTED') {
       const timeoutError = new Error('Request timed out');
-      reject(timeoutError);
-    });
-
-    request.on('error', (error) => {
-      request.destroy();
-      reject(error);
-    });
-
-    request.end();
-  });
+      throw timeoutError;
+    }
+    throw {
+      message: error.message,
+      code: error.code,
+      status: error.response?.status,
+      url: target
+    };
+  }
 }
 
 function handleUnavailable(reason) {
@@ -1000,7 +1008,7 @@ powerMonitor.on('resume', async () => {
         handleUnavailable(statusCode);
       }
     } catch (error) {
-      logger.error("WAKE - " + error);
+      logger.error(`WAKE - ${error.code}`);
       logger.info("WAKE - Application will now restart...");
       app.relaunch();
       app.exit();
