@@ -180,10 +180,14 @@ async function retryAvailabilityCheck() {
           mainWindow.webContents.send('retry-update', "Unable to connect to instance!");
         } else {
           mainWindow.webContents.send('retry-update', `Trying to reconnect ${retryCount} of ${maxRetries}`);
+          logger.info(`Instance unavailable. Retry ${retryCount}...`);
           await new Promise(r => setTimeout(r, 4000));
         }
       } catch (error) {
-        mainWindow.webContents.send('retry-error', "Hard connection failure, instance unavailable.");
+        logger.error(`Instance was not available during retry ${retryCount}, hard connection failure.`);
+        logger.error(error);
+        //Fix me when you have more time
+        mainWindow.webContents.send('retry-error', `Hard connection failure, instance unavailable (${retryCount}).`);
       }
       retryCount++;
     }
