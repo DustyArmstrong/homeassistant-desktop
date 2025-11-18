@@ -7,12 +7,16 @@ import config  from "./config.js";
 import semver from "semver";
 import http from 'http';
 import https from 'https';
-import winston from 'winston';
 import path from 'path';
 const bonjour = new Bonjour.Bonjour();
-//scaling options for different app versions
-//app.commandLine.appendSwitch('high-dpi-support', 'true');
-//app.commandLine.appendSwitch('force-device-scale-factor', 1);
+
+if (config.get("highDPIMode")) {
+  app.commandLine.appendSwitch('high-dpi-support', 'true');
+}
+
+if (config.get("forceScaling")) {
+  app.commandLine.appendSwitch('force-device-scaling-factor', 1);
+}
 
 logger.errorHandler.startCatching();
 logger.info(`${app.name} started`);
@@ -33,6 +37,11 @@ let initialized = false;
 let autostartEnabled = false;
 let forceQuit = false;
 let resizeEvent = false;
+let retryingAvailability = false;
+let sleepHandled = false;
+let resumeHandled = false;
+let winIsReloading = false;
+let avIsChecking = false;
 let mainWindow;
 let tray;
 let availabilityCheckerInterval;
@@ -73,8 +82,7 @@ async function checkForUpdates() {
         } 
       }
     } catch (error) {
-      logger.error("There was a problem checking for updates");
-      logger.error(error);
+      logger.error("UPDT - " + error);
     }
   }
 
@@ -84,11 +92,11 @@ function checkAutoStart() {
     .then((isEnabled) => {
       autostartEnabled = isEnabled;
     })
-    .catch((err) => {
-      logger.error("There was a problem with application auto start");
-      logger.error(err);
+    .catch((error) => {
+      logger.error("AUTOST - " + error);
     });
 }
+
 
 async function availabilityCheck() {
   const instance = currentInstance();
@@ -97,69 +105,94 @@ async function availabilityCheck() {
       return;
   }
 
+  if (avIsChecking) {
+    return;
+  }
+
+  avIsChecking = true;
+
   try {
-      const statusCode = await getResponse(instance);
+      const statusCode = await getResponse(instance, 8000);
       if (statusCode !== 200) {
-          logger.error("Instance unavailable: " + statusCode);
-          clearInterval(availabilityCheckerInterval);
-          availabilityCheckerInterval = null;
-          await showError(true);
-          if (config.get("autoReconnect") === true) {
-            retryAvailabilityCheck();
-          }
-          if (config.get("automaticSwitching")) {
-              checkForAvailableInstance();
-          }
+        handleUnavailable(statusCode);
       }
   } catch (error) {
-    logger.error("Error during availability check:", error);
+    logger.error("AVCHK - ", error);
+    handleUnavailable(error);
+  } finally {
+    avIsChecking = false;
   }
 }
 
-async function getResponse(instance) {
+async function getResponse(instance, timeoutMs = 8000) {
   return new Promise((resolve, reject) => {
-      const url = new URL(instance);
-      const request = (url.protocol === 'https:' ? https : http).request(`${url.origin}/auth/providers`, (res) => {
-          const statusCode = res.statusCode;
-          resolve(statusCode);
-      });
-      request.on("error", (error) => {
-          reject(error);
-      });
-      request.end();
+    const url = new URL(instance);
+    const request = (url.protocol === 'https:' ? https : http).request(`${url.origin}/auth/providers`, (res) => {
+      resolve(res.statusCode);
+    });
+
+    request.setTimeout(timeoutMs, () => {
+      request.destroy();
+      const timeoutError = new Error('Request timed out');
+      reject(timeoutError);
+    });
+
+    request.on('error', (error) => {
+      request.destroy();
+      reject(error);
+    });
+
+    request.end();
   });
 }
 
+function handleUnavailable(reason) {
+  logger.error("INSTAV - " + reason);
+  if (retryingAvailability) {
+    return;
+  }
+  clearInterval(availabilityCheckerInterval);
+  availabilityCheckerInterval = null;
+  showError(true);
+  if (config.get('autoReconnect') === true) retryAvailabilityCheck();
+  if (config.get('automaticSwitching')) checkForAvailableInstance();
+}
+
 async function retryAvailabilityCheck() {
-  const instance = currentInstance();
-  let retryCount = 0;
-  const maxRetries = 5;
-  let retryData;
-  while (retryCount <= maxRetries) {
+  if (retryingAvailability) return;
+  retryingAvailability = true;
+  try {
+    const instance = currentInstance();
+    let retryCount = 0;
+    const maxRetries = 5;
+
+    while (retryCount <= maxRetries) {
       try {
-          const statusCode = await getResponse(instance);
-          if (statusCode !== 200) {
-            if (retryCount === 5) {
-              logger.error(`Cannot automatically connect to instance.`);
-              retryData = "Unable to connect to instance!";
-              mainWindow.webContents.send('retry-update', retryData);
-            } else {
-              logger.error(`Instance unavailable. Retry ${retryCount}...`);
-              retryData = `Trying to reconnect ${retryCount} of ${maxRetries}`;
-              mainWindow.webContents.send('retry-update', retryData);
-              await new Promise(resolve => setTimeout(resolve, 4000));
-            }
-          } else {
-              logger.info("Automatic reconnection successful!");
-              mainWindow.webContents.send('retry-success', "Instance alive, reconnecting.");
-              await reinitMainWindow();
-          }
+        const statusCode = await getResponse(instance, 8000);
+        if (statusCode === 200) {
+          logger.info("Automatic reconnection successful!");
+          mainWindow.webContents.send('retry-success', "Instance alive, reconnecting.");
+          await reinitMainWindow();
+          break;
+        }
+        if (retryCount === maxRetries) {
+          logger.error("RETRY - Cannot automatically connect to instance.");
+          mainWindow.webContents.send('retry-update', "Unable to connect to instance!");
+        } else {
+          mainWindow.webContents.send('retry-update', `Trying to reconnect ${retryCount} of ${maxRetries}`);
+          logger.info(`Instance unavailable. Retry ${retryCount}...`);
+          await new Promise(r => setTimeout(r, 4000));
+        }
       } catch (error) {
-          logger.error('Error trying to reconnect:', error);
-          retryData = "Connection to instance failed.";
-          mainWindow.webContents.send('retry-error', retryData);
+        logger.error(`Instance was not available during retry ${retryCount}, hard connection failure.`);
+        logger.error(error);
+        //Fix me when you have more time
+        mainWindow.webContents.send('retry-error', `Hard connection failure, instance unavailable (${retryCount}).`);
       }
       retryCount++;
+    }
+  } finally {
+    retryingAvailability = false;
   }
 }
 
@@ -220,7 +253,7 @@ async function checkForAvailableInstance() {
     });
     let found;
     for (const instance of instances.filter((e) => e.url !== currentInstance())) {
-      const statusCode = await getResponse(instance);
+      const statusCode = await getResponse(instance, 8000);
       if (statusCode === 200) {
         found = instance;
       };
@@ -450,6 +483,31 @@ function getMenu() {
               click: () => changeIcon("IconWinBlack.png"),
             },
           ]
+        },
+        {
+          label: "Scaling",
+          submenu: [
+            {
+              label: "Enable high DPI",
+              type: "radio",
+              checked: config.get("highDPIMode"),
+              click: () => {
+                config.set("highDPIMode", !config.get("highDPIMode"));
+                app.relaunch();
+                app.exit();
+              }
+            },
+            {
+              label: "Force scaling factor",
+              type: "radio",
+              checked: config.get("forceScaling"),
+              click: () => {
+                config.set("forceScaling", !config.get("forceScaling"));
+                app.relaunch();
+                app.exit();
+              }
+            }
+          ]
         }
       ]
     },
@@ -578,7 +636,7 @@ function getMenu() {
 }
 
 async function createMainWindow(show = false) {
-  logger.info("Initialized main window");
+  logger.info("Loading main window...");
   mainWindow = new BrowserWindow({
     width: 420,
     height: 460,
@@ -596,19 +654,60 @@ async function createMainWindow(show = false) {
   });
 
   //mainWindow.webContents.openDevTools();
-  try {
-    await mainWindow.loadURL(indexFile);
-  } catch (error) {
-    logger.info(error);
-  }
+
+  const tryLoadURL = async (attempt = 1, maxAttempts = 5) => {
+    try {
+      logger.info('Loading index...', attempt);
+      await mainWindow.loadURL(indexFile);
+      logger.info("Initialized main window");
+      return true;
+    } catch (error) {
+      logger.error(`MAINWIN - (${attempt}):`, error);
+      if (attempt < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 100 * attempt));
+        return tryLoadURL(attempt + 1, maxAttempts);
+      }
+      try {
+        logger.error('MAINWIN - Unable to load window, cannot resolve network');
+        showError(true);
+      } catch (error) {
+        logger.error('MAINWIN - ', error);
+      }
+      return false;
+    }
+  };
+  await tryLoadURL();
 
   createTray();
 
+  mainWindow.webContents.on('did-fail-load', async (e, errorCode, validatedURL) => {
+    logger.error(`WEBCONT - ${validatedURL} (code ${errorCode})`);
+    if (winIsReloading) {
+      logger.info("Window is currently reloading...");
+      return;
+    }
+    winIsReloading = true;
+    try {
+      await tryLoadURL(1);
+    } catch (error) {
+      logger.error("WEBCONT - ", error);
+      showError(true);
+    } finally {
+      winIsReloading = false;
+    }
+  });
+
   mainWindow.webContents.on('render-process-gone', (event, detailed) => {
-    logger.error("Renderer dead, reason: " + detailed.reason);
-    if (detailed.reason === 'crashed') {
-        mainWindow.webContents.reload();
-        logger.info("Renderer rebooted successfully.");
+    logger.error("RENDR - " + detailed.reason);
+    const RELOAD_REASONS = new Set(['crashed', 'abnormal-exit', 'oom', 'launch-failed']);
+    if (RELOAD_REASONS.has(detailed.reason)) {
+        try {
+          mainWindow.webContents.reload();
+          logger.info("Renderer rebooted successfully.");
+        } catch (error) {
+          logger.error('RENDR - ', error);
+          showError(true);
+        }
      }
   });
 
@@ -868,13 +967,20 @@ async function showError(isError) {
   }
 }
 
-let sleepHandled = false;
-let resumeHandled = false;
+async function showSleep(isSleeping) {
+  if (!isSleeping && mainWindow.webContents.getURL().includes("sleeping.html")) {
+    mainWindow.loadURL(indexFile);
+  }
+
+  if (isSleeping && currentInstance() && !mainWindow.webContents.getURL().includes("sleeping.html")) {
+    mainWindow.loadURL(sleepFile);
+  }
+}
 
 powerMonitor.on('suspend', () => {
   if (!sleepHandled) {
     logger.info("Home Assistant going to sleep.");
-    mainWindow.loadURL(sleepFile);
+    showSleep(true);
     clearInterval(availabilityCheckerInterval);
     availabilityCheckerInterval = null;
     sleepHandled = true;
@@ -883,28 +989,22 @@ powerMonitor.on('suspend', () => {
 
 powerMonitor.on('resume', async () => {
   if (!resumeHandled) {
-    logger.info("Power state resumed, re-launching...");
-    const instance = currentInstance();
-    const maxRetries = 2;
-    let attempts = 0;
-
-    while (attempts < maxRetries) {
-      try {
-        const statusCode = await getResponse(instance);
-        if (statusCode === 200) {
-          app.relaunch();
-          app.exit();
-          return;
-        }
-      } catch {
-      }
-      attempts++;
-      await new Promise(resolve => setTimeout(resolve, 100));
-    }
-    logger.error("Network wasn't ready, retrying...");
-    app.relaunch();
-    app.exit();
     resumeHandled = true;
+    logger.info("Power state resumed, attempting to re-connect...");
+    const instance = currentInstance();
+    try {
+      const statusCode = await getResponse(instance, 8000);
+      if (statusCode === 200) {
+        await reinitMainWindow();
+      } else {
+        handleUnavailable(statusCode);
+      }
+    } catch (error) {
+      logger.error("WAKE - " + error);
+      logger.info("WAKE - Application will now restart...");
+      app.relaunch();
+      app.exit();
+    }
   }
 });
 
