@@ -34,6 +34,28 @@ Just download the latest version for your platform from the [release section](ht
 - support for Wayland is limited - the application will still run however a number of Electron's features aren't implemented yet (e.g. shortcuts, checkbox display)
 - if using "detached window" on Windows, instead of dragging, you have to resize it to move it
 
+## Troubleshooting
+
+### Visual issues
+
+If you experience visual issues with your Home Assistant dashboards when using Home Assistant Desktop, in particular if these are not consistent with your external web browser, this is most often caused by cached content. Please first try to restart the application from the menu, or should that fail, close the application and remove the content from:
+
+Windows:
+
+`%appdata%\homeassistant-desktop\Cache\*`
+
+Mac:
+
+`/Users/{user}/Library/Application Support/homeassistant-desktop/Cache/*`
+
+Linux (may vary on your system):
+
+`~/.config/homeassistant-desktop/Cache/*`
+
+Additionally, please also clear the cache in your external web browser to confirm the issue only occurs with Home Assistant Desktop.
+
+_A function to perform this action from the menu is planned for a future release._
+
 ## Contributing
 
 Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
