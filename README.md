@@ -34,6 +34,12 @@ Just download the latest version for your platform from the [release section](ht
 - support for Wayland is limited - the application will still run however a number of Electron's features aren't implemented yet (e.g. shortcuts, checkbox display)
 - if using "detached window" on Windows, instead of dragging, you have to resize it to move it
 
+### Linux Window Position
+
+Per above, Wayland does not support - at least in any straightforward manner for this particular project - programmatic window positioning. Some users have had success with Remember Window Positions - https://github.com/rxappdev/RememberWindowPositions. This tool allows you to manage your window positions for many applications running under Wayland, not just HA Desktop. 
+
+This section will be updated to reflect any other solutions as needed. At this time, window positioning on Wayland is not something this project can effectively handle within its own scope. 
+
 ## Troubleshooting
 
 ### Visual issues

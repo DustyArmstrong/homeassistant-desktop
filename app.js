@@ -519,27 +519,6 @@ function getMenu() {
             }
           ]
         },
-        {
-          label: "Displays",
-          click: () => {
-            const displayIds = getDisplays().map(id => String(id));
-            dialog
-              .showMessageBox({
-                message: "Which display do you want the application to appear on (Win/Linux)?",
-                buttons: [...displayIds, "Cancel"],
-              })
-              .then(async (res) => {
-                //if (process.platform === 'darwin') {
-                //  return;
-                //}
-                if (res.response === displayIds.length) {
-                  return;
-                }
-                const selectedDisplayId = displayIds[res.response];
-                logger.info(`Selected display ${selectedDisplayId}`);
-              });
-          }
-        }
       ]
     },
     {
@@ -938,11 +917,6 @@ function changeIcon(iconName) {
     ["win32", "linux"].includes(process.platform) ? `${__dirname}/assets/${iconName}` : `${__dirname}/assets/${iconName}`
   );
   logger.info(`Changed tray icon to ${iconName}`);
-}
-
-function getDisplays() {
-  const displays = screen.getAllDisplays();
-  return displays.map(display => display.id);
 }
 
 function setWindowFocusTimer() {
