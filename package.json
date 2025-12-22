@@ -31,10 +31,10 @@
     "semver": "^7.7.3"
   },
   "devDependencies": {
-    "@eslint/js": "^9.39.1",
-    "electron": "^39.1.2",
+    "@eslint/js": "^9.39.2",
+    "electron": "^39.2.7",
     "electron-builder": "^26.0.12",
-    "eslint": "^9.39.1",
+    "eslint": "^9.39.2",
     "eslint-plugin-unused-imports": "^4.3.0",
     "globals": "^16.5.0"
   },

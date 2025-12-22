@@ -86,7 +86,7 @@ async function checkForUpdates() {
         } 
       }
     } catch (error) {
-      logger.error("UPDT - " + error);
+      logger.error(`UPDT - ${error}`);
     }
   }
 
@@ -97,7 +97,7 @@ function checkAutoStart() {
       autostartEnabled = isEnabled;
     })
     .catch((error) => {
-      logger.error("AUTOST - " + error);
+      logger.error(`AUTOST - ${error}`);
     });
 }
 
@@ -121,7 +121,7 @@ async function availabilityCheck() {
         handleUnavailable(statusCode);
       }
   } catch (error) {
-    logger.error("AVCHK - ", error);
+    logger.error(`AVCHK - ${error}`);
     handleUnavailable(error);
   } finally {
     avIsChecking = false;
@@ -155,7 +155,7 @@ async function getResponse(instance, timeoutMs = 8000) {
 }
 
 function handleUnavailable(reason) {
-  logger.error("INSTAV - " + reason);
+  logger.error(`INSTAV - ${reason}`);
   if (retryingAvailability) {
     return;
   }
@@ -194,7 +194,7 @@ async function retryAvailabilityCheck() {
       } catch (error) {
         logger.error(`Instance was not available during retry ${retryCount}, hard connection failure.`);
         logger.error(error);
-        //Fix me when you have more time
+        await new Promise(r => setTimeout(r, 4000));
         mainWindow.webContents.send('retry-error', `Hard connection failure, instance unavailable (${retryCount}).`);
       }
       retryCount++;
@@ -499,6 +499,7 @@ function getMenu() {
               label: "Enable high DPI",
               type: "radio",
               checked: config.get("highDPIMode"),
+              enabled: config.get("highDPIMode"),
               click: () => {
                 config.set("highDPIMode", !config.get("highDPIMode"));
                 app.relaunch();
@@ -509,6 +510,7 @@ function getMenu() {
               label: "Force scaling factor",
               type: "radio",
               checked: config.get("forceScaling"),
+              enabled: config.get("forceScaling"),
               click: () => {
                 config.set("forceScaling", !config.get("forceScaling"));
                 app.relaunch();
@@ -516,6 +518,27 @@ function getMenu() {
               }
             }
           ]
+        },
+        {
+          label: "Displays",
+          click: () => {
+            const displayIds = getDisplays().map(id => String(id));
+            dialog
+              .showMessageBox({
+                message: "Which display do you want the application to appear on (Win/Linux)?",
+                buttons: [...displayIds, "Cancel"],
+              })
+              .then(async (res) => {
+                //if (process.platform === 'darwin') {
+                //  return;
+                //}
+                if (res.response === displayIds.length) {
+                  return;
+                }
+                const selectedDisplayId = displayIds[res.response];
+                logger.info(`Selected display ${selectedDisplayId}`);
+              });
+          }
         }
       ]
     },
@@ -596,34 +619,49 @@ function getMenu() {
       type: "separator",
     },
     {
-      label: "Restart Application",
+      label: "🔄 Restart Application",
       click: () => {
         app.relaunch();
         app.exit();
       },
     },
     {
-      label: "⚠️ Reset Application",
+      label: "⚠️ Clear Application Data",
       click: () => {
         dialog
           .showMessageBox({
-            message: "Are you sure you want to reset Home Assistant Desktop?",
-            buttons: ["Reset Everything!", "Reset Windows", "Cancel"],
+            message: "What would you like to reset (actions are irreversable)?",
+            buttons: ["Clear Frontend Cache (Soft)", "Clear All Caches (Hard)", "Reset Window", "Reset Everything!", "Cancel"],
           })
           .then(async (res) => {
-            if (res.response !== 2) {
-              if (res.response === 0) {
-                config.clear();
+            const actions = {
+              0: async () => {
+                logger.info("Frontend cache cleared!");
+                await mainWindow.webContents.session.clearCache();
+              },
+              1: async () => {
+                logger.info("Cache and session storage deleted!");
                 await mainWindow.webContents.session.clearCache();
                 await mainWindow.webContents.session.clearStorageData();
-              } else {
+              },
+              2: async () => {
+                logger.info("Window position and size reset!");
                 config.delete("windowSizeDetached");
                 config.delete("windowSize");
                 config.delete("windowPosition");
                 config.delete("fullScreen");
                 config.delete("detachedMode");
-              }
-
+              },
+              3: async () => {
+                logger.info("All application data reset!");
+                config.clear();
+                await mainWindow.webContents.session.clearCache();
+                await mainWindow.webContents.session.clearStorageData();
+              } 
+            };
+            const action = actions[res.response];
+            if (action) {
+              await action();
               app.relaunch();
               app.exit();
             }
@@ -679,7 +717,7 @@ async function createMainWindow(show = false) {
         logger.error('MAINWIN - Unable to load window, cannot resolve network');
         showError(true);
       } catch (error) {
-        logger.error('MAINWIN - ', error);
+        logger.error(`MAINWIN - ${error}`);
       }
       return false;
     }
@@ -698,7 +736,7 @@ async function createMainWindow(show = false) {
     try {
       await tryLoadURL(1);
     } catch (error) {
-      logger.error("WEBCONT - ", error);
+      logger.error(`WEBCONT - ${error}`);
       showError(true);
     } finally {
       winIsReloading = false;
@@ -713,7 +751,7 @@ async function createMainWindow(show = false) {
           mainWindow.webContents.reload();
           logger.info("Renderer rebooted successfully.");
         } catch (error) {
-          logger.error('RENDR - ', error);
+          logger.error(`RENDR - ${error}`);
           showError(true);
         }
      }
@@ -900,6 +938,11 @@ function changeIcon(iconName) {
     ["win32", "linux"].includes(process.platform) ? `${__dirname}/assets/${iconName}` : `${__dirname}/assets/${iconName}`
   );
   logger.info(`Changed tray icon to ${iconName}`);
+}
+
+function getDisplays() {
+  const displays = screen.getAllDisplays();
+  return displays.map(display => display.id);
 }
 
 function setWindowFocusTimer() {
