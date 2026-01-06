@@ -497,9 +497,8 @@ function getMenu() {
           submenu: [
             {
               label: "Enable high DPI",
-              type: "radio",
+              type: "checkbox",
               checked: config.get("highDPIMode"),
-              enabled: config.get("highDPIMode"),
               click: () => {
                 config.set("highDPIMode", !config.get("highDPIMode"));
                 app.relaunch();
@@ -508,9 +507,8 @@ function getMenu() {
             },
             {
               label: "Force scaling factor",
-              type: "radio",
+              type: "checkbox",
               checked: config.get("forceScaling"),
-              enabled: config.get("forceScaling"),
               click: () => {
                 config.set("forceScaling", !config.get("forceScaling"));
                 app.relaunch();
@@ -609,7 +607,8 @@ function getMenu() {
       click: () => {
         dialog
           .showMessageBox({
-            message: "What would you like to reset (actions are irreversable)?",
+            type: 'warning',
+            message: "What would you like to reset (actions are irreversible)?",
             buttons: ["Clear Frontend Cache (Soft)", "Clear All Caches (Hard)", "Reset Window", "Reset Everything!", "Cancel"],
           })
           .then(async (res) => {
@@ -639,10 +638,13 @@ function getMenu() {
               } 
             };
             const action = actions[res.response];
-            if (action) {
+            if (!action) return;
+            try {
               await action();
               app.relaunch();
               app.exit();
+            } catch (error) {
+              logger.error('Data reset failed: ', error);
             }
           });
       },
