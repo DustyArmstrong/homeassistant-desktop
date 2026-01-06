@@ -44,7 +44,9 @@ This section will be updated to reflect any other solutions as needed. At this t
 
 ### Visual issues
 
-If you experience visual issues with your Home Assistant dashboards when using Home Assistant Desktop, in particular if these are not consistent with your external web browser, this is most often caused by cached content. Please first try to restart the application from the menu, or should that fail, close the application and remove the content from:
+If you experience visual issues with your Home Assistant dashboards when using Home Assistant Desktop, in particular if these are not consistent with your external web browser, this is most often caused by cached content. A function is present in the application to remove several layers of cache - in most cases the basic (soft) clear should suffice. You can find this and other options under the **Clear Application Data** menu. Should this fail, a hard clear (includes session storage) is the next best option. 
+
+If everything fails, you can manually clear the cache by removing all the content from:
 
 Windows:
 
@@ -59,8 +61,6 @@ Linux (may vary on your system):
 `~/.config/homeassistant-desktop/Cache/*`
 
 Additionally, please also clear the cache in your external web browser to confirm the issue only occurs with Home Assistant Desktop.
-
-_A function to perform this action from the menu is planned for a future release._
 
 ## Contributing
 
