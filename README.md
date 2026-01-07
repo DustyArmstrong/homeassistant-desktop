@@ -34,11 +34,19 @@ Just download the latest version for your platform from the [release section](ht
 - support for Wayland is limited - the application will still run however a number of Electron's features aren't implemented yet (e.g. shortcuts, checkbox display)
 - if using "detached window" on Windows, instead of dragging, you have to resize it to move it
 
+### Linux Window Position
+
+Per above, Wayland does not support - at least in any straightforward manner for this particular project - programmatic window positioning. Some users have had success with Remember Window Positions - https://github.com/rxappdev/RememberWindowPositions. This tool allows you to manage your window positions for many applications running under Wayland, not just HA Desktop. 
+
+This section will be updated to reflect any other solutions as needed. At this time, window positioning on Wayland is not something this project can effectively handle within its own scope. 
+
 ## Troubleshooting
 
 ### Visual issues
 
-If you experience visual issues with your Home Assistant dashboards when using Home Assistant Desktop, in particular if these are not consistent with your external web browser, this is most often caused by cached content. Please first try to restart the application from the menu, or should that fail, close the application and remove the content from:
+If you experience visual issues with your Home Assistant dashboards when using Home Assistant Desktop, in particular if these are not consistent with your external web browser, this is most often caused by cached content. A function is present in the application to remove several layers of cache - in most cases the basic (soft) clear should suffice. You can find this and other options under the **Clear Application Data** menu. Should this fail, a hard clear (includes session storage) is the next best option. 
+
+If everything fails, you can manually clear the cache by removing all the content from:
 
 Windows:
 
@@ -53,8 +61,6 @@ Linux (may vary on your system):
 `~/.config/homeassistant-desktop/Cache/*`
 
 Additionally, please also clear the cache in your external web browser to confirm the issue only occurs with Home Assistant Desktop.
-
-_A function to perform this action from the menu is planned for a future release._
 
 ## Contributing
 
