@@ -16,8 +16,9 @@ if (config.get("highDPIMode")) {
 }
 
 if (config.get("forceScaling")) {
-  app.commandLine.appendSwitch('force-device-scaling-factor', 1);
+  app.commandLine.appendSwitch('force-device-scaling-factor', config.get("scaleFactor"));
 }
+
 
 logger.errorHandler.startCatching();
 logger.info(`${app.name} started`);
@@ -499,7 +500,7 @@ function getMenu() {
               label: "Enable high DPI",
               type: "checkbox",
               checked: config.get("highDPIMode"),
-              click: () => {
+              click: async() => {
                 config.set("highDPIMode", !config.get("highDPIMode"));
                 app.relaunch();
                 app.exit();
@@ -509,10 +510,57 @@ function getMenu() {
               label: "Force scaling factor",
               type: "checkbox",
               checked: config.get("forceScaling"),
-              click: () => {
+              click: async() => {
+                if (!config.get("scaleFactor")) {
+                  config.set("scaleFactor", "1");
+                }
                 config.set("forceScaling", !config.get("forceScaling"));
                 app.relaunch();
                 app.exit();
+              }
+            },
+            {
+              label: "Set scaling factor",
+              click: async() => {
+                dialog
+                  .showMessageBox({
+                    type: "question",
+                    message: "Set a scale factor for the application.",
+                    buttons: ["1", "1.25", "1.5", "1.75", "2"],
+                  })
+                  .then(async (res) => {
+                    const scaleActions = {
+                      0: async () => {
+                        logger.info("Scaling factor set to 1");
+                        config.set("scaleFactor", "1");
+                      },
+                      1: async () => {
+                        logger.info("Scaling factor set to 1.25");
+                        config.set("scaleFactor", "1.25");
+                      },
+                      2: async () => {
+                        logger.info("Scaling factor set to 1.5");
+                        config.set("scaleFactor", "1.5");
+                      },
+                      3: async () => {
+                        logger.info("Scaling factor set to 1.75");
+                        config.set("scaleFactor", "1.75");
+                      },
+                      4: async () => {
+                        logger.info("Scaling factor set to 2");
+                        config.set("scaleFactor", "2");
+                      }
+                    };
+                    const scaleAction = scaleActions[res.response];
+                    if (!scaleAction) return;
+                    try {
+                      await scaleAction();
+                      app.relaunch();
+                      app.exit();
+                    } catch (error) {
+                      logger.error("Could not set scale factor: ", error);
+                    }
+                  });
               }
             }
           ]
@@ -522,16 +570,31 @@ function getMenu() {
     {
       type: "separator",
     },
-    {
-      label: "Use detached Window",
-      type: "checkbox",
-      checked: config.get("detachedMode"),
-      click: async () => {
-        config.set("detachedMode", !config.get("detachedMode"));
-        mainWindow.hide();
-        await createMainWindow(config.get("detachedMode"));
+      {
+        label: "Detached Mode",
+        submenu: [
+          {
+            label: "Use detached Window",
+            type: "checkbox",
+            checked: config.get("detachedMode"),
+            click: async () => {
+              config.set("detachedMode", !config.get("detachedMode"));
+              mainWindow.hide();
+              await createMainWindow(config.get("detachedMode"));
+            }
+          },
+          {
+            label: "Disable Window Frame",
+            type: "checkbox",
+            checked: config.get("disableFrame"),
+            click: async () => {
+              config.set("disableFrame", !config.get("disableFrame"));
+              app.relaunch();
+              app.exit();
+            }
+          }
+        ]
       },
-    },
     {
       label: "Use Fullscreen",
       type: "checkbox",
@@ -604,7 +667,7 @@ function getMenu() {
     },
     {
       label: "⚠️ Clear Application Data",
-      click: () => {
+      click: async() => {
         dialog
           .showMessageBox({
             type: 'warning',
@@ -644,7 +707,7 @@ function getMenu() {
               app.relaunch();
               app.exit();
             } catch (error) {
-              logger.error('Data reset failed: ', error);
+              logger.error("Data reset failed: ", error);
             }
           });
       },
@@ -672,7 +735,7 @@ async function createMainWindow(show = false) {
     show: false,
     skipTaskbar: !show,
     autoHideMenuBar: true,
-    frame: config.get("detachedMode") && process.platform !== "darwin",
+    frame: !config.get("disableFrame") && process.platform !== "darwin",
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
