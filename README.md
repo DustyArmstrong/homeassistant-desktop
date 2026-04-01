@@ -8,6 +8,8 @@ This project is fork from [iprodanovbg/homeassistant-desktop](https://github.com
 
 ## Project Status
 
+**A note on NPM supply chain attacks:** Attacks on NPM packages have become increasingly common. While the version of Axios used in this project is not implicated in that compromise (no associated CVE), I do however feel it necessary to take some steps to try and reduce the impact of future incidents. This project is maintained entirely by a human - in some ways this benefits things as I'm slow to update deps anyway (partly for this reason!) and don't automate everything, but I will try and take more of a hardline approach to dep audits going forward. 
+
 As of August 2025, the previous version of this project produced by [iprodanovbg](https://github.com/iprodanovbg/) has been archived. Given it is unlikely to return to active development, I will continue to maintain my own version here for as long as people wish to use it. The project is currently in a stable iteration, but I would like to leverage this/a future application to more tightly integrate with Home Assistant itself (device sensors etc.) when I have time. This is highly dependent on my availability, but contributions are welcome. 
 
 I hope this project can be of some use to others if you like/liked the app! Issues are open to submit if you have any, though please be aware I may not be able to resolve all issues quickly or comprehensively - I will do my best.
@@ -68,7 +70,7 @@ Pull requests are welcome. For major changes, please open an issue first to disc
 
 ## License and Author
 
-Copyright 2024-2025, [Dusty Armstrong](https://github.com/DustyArmstrong)\
+Copyright 2024-2026, [Dusty Armstrong](https://github.com/DustyArmstrong)\
 Copyright 2022-2023, [Ivan Prodanov](https://github.com/iprodanovbg)\
 Copyright 2020-2021, [Marvin Kelm](https://github.com/mrvnklm)
 
