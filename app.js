@@ -1,13 +1,10 @@
-import { app, dialog, ipcMain, shell, globalShortcut, screen, Menu, Tray, BrowserWindow, powerMonitor } from "electron";
+import { app, dialog, ipcMain, shell, globalShortcut, screen, Menu, Tray, BrowserWindow, powerMonitor, net } from "electron";
 import AutoLaunch from "auto-launch";
 import Positioner from "electron-traywindow-positioner";
 import Bonjour from "bonjour-service";
 import logger from "electron-log";
 import config  from "./config.js";
 import semver from "semver";
-import http from 'http';
-import https from 'https';
-import axios from 'axios';
 import path from 'path';
 const bonjour = new Bonjour.Bonjour();
 
@@ -34,9 +31,6 @@ const __dirname = import.meta.dirname;
 const indexFile = `file://${__dirname}/web/index.html`;
 const errorFile = `file://${__dirname}/web/error.html`;
 const sleepFile = `file://${__dirname}/web/sleeping.html`;
-
-const httpAgent = new http.Agent({ keepAlive: true, maxSockets: 8 });
-const httpsAgent = new https.Agent({ keepAlive: true, maxSockets: 8 });
 
 let initialized = false;
 let autostartEnabled = false;
@@ -70,7 +64,7 @@ function unregisterKeyboardShortcut() {
 
 async function checkForUpdates() {
   try {
-    const apiResponse = await fetch("https://api.github.com/repos/DustyArmstrong/homeassistant-desktop/releases/latest");
+    const apiResponse = await net.fetch("https://api.github.com/repos/DustyArmstrong/homeassistant-desktop/releases/latest");
     const apiData = await apiResponse.json();
     const latestVersion = apiData.tag_name;
     const currentVersion = app.getVersion();
@@ -134,18 +128,12 @@ async function getResponse(instance, timeoutMs = 8000) {
   const target = `${url.origin}/auth/providers`;
 
   try {
-    const res = await axios.get(target, {
-      timeout: timeoutMs,
-      validateStatus: null,
-      httpAgent,
-      httpsAgent,
-    });
+    const res = await Promise.race([
+      net.fetch(target),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Request timed out')), timeoutMs))
+    ]);
     return res.status;
   } catch (error) {
-    if (error.code === 'ECONNABORTED') {
-      const timeoutError = new Error('Request timed out');
-      throw timeoutError;
-    }
     throw {
       message: error.message,
       code: error.code,
