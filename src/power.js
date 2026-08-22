@@ -15,7 +15,7 @@ powerMonitor.on('suspend', () => {
     if (!sleepHandled) {
         logger.info("Home Assistant going to sleep.");
         if (isWebSocketOpen()) {
-            closeWebSocket();
+            closeWebSocket("Suspending machine");
         }
         showSleep(true);
         sleepHandled = true;
@@ -46,7 +46,7 @@ powerMonitor.on('resume', async () => {
 powerMonitor.on('shutdown', () => {
     logger.info("shutdown initiated, quitting...");
     if (isWebSocketOpen()) {
-        closeWebSocket();
+        closeWebSocket("Shutting down");
     }
     app.quit();
 });

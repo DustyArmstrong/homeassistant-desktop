@@ -55,6 +55,25 @@ app.whenReady().then(async () => {
 	setResumeHandledStatus(false);
 
 	await createMainWindow(!config.has("currentInstance"));
+	await new Promise(resolve => setTimeout(resolve, 200));
+
+	if (config.get("shortcutEnabled")) {
+		registerKeyboardShortcut();
+	}
+
+	if (config.get("shortcutFullscreenEnabled")) {
+		globalShortcut.register("CommandOrControl+Alt+Return", () => {
+			toggleFullScreen();
+		});
+	}
+
+	if (!config.has("currentInstance")) {
+		config.set("disableHover", true);
+	}
+
+	if (!config.has("autoUpdate")) {
+		config.set("autoUpdate", true);
+	}
 
 	if (config.get("autoUpdate") === true) {
 		checkForUpdates();
@@ -74,23 +93,6 @@ app.whenReady().then(async () => {
 		}
 	}
 
-	if (config.get("shortcutEnabled")) {
-		registerKeyboardShortcut();
-	}
-
-	if (config.get("shortcutFullscreenEnabled")) {
-		globalShortcut.register("CommandOrControl+Alt+Return", () => {
-			toggleFullScreen();
-		});
-	}
-
-	if (!config.has("currentInstance")) {
-		config.set("disableHover", true);
-	}
-
-	if (!config.has("autoUpdate")) {
-		config.set("autoUpdate", true);
-	}
 });
 
 app.on("will-quit", () => {

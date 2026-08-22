@@ -67,12 +67,12 @@ export function isWebSocketOpen() {
     return wsConnection !== null && wsConnection.readyState === WS_STATES.OPEN;
 }
 
-export function closeWebSocket() {
+export function closeWebSocket(source) {
     if (isWebSocketOpen()) {
         wsConnectionClosed = true;
         wsConnection.close(4000);
         wsConnection = null;
-        logger.info("Websocket closed by call");
+        logger.info(`INSTAV - Websocket closed (${source})`);
     }
 }
 
@@ -125,7 +125,7 @@ export async function initWebSocketHealth(instance) {
                     const mainWindow = getMainWindow();
                     clearTimeout(authTimeout);
                     mainWindow.webContents.send("retry-update", "Websocket authentication failed, trying to obtain a new token...");
-                    handleUnavailable("Websocket authentication failed!");
+                    handleUnavailable("Authentication failed!");
                 }
 
                 if (msg.type === "event" && msg.event?.data?.entity_id === "homeassistant.home_assistant") {
@@ -135,22 +135,21 @@ export async function initWebSocketHealth(instance) {
 
             wsConnection.onerror = (error) => {
                 clearTimeout(authTimeout);
-                handleUnavailable(`Websocket error ${error}`);
+                handleUnavailable(`General error ${error}`);
             };
 
             wsConnection.onclose = (event) => {
                 clearTimeout(authTimeout);
                 if (wsConnectionClosed) {
-                    logger.info("Websocket connection closed by user.");
+                    logger.info("Websocket connection closed.");
                     wsConnectionClosed = false;
                 } else {
-                    handleUnavailable(`Websocket closed unexpectedly (Code: ${event.code})`);
+                    handleUnavailable(`Unexpected (Code: ${event.code})`);
                 }
                 
             };
         } catch (error) {
-            logger.error(`WebSocket fatal: ${error}`);
-            handleUnavailable(`Websocket fatal: ${error}`);
+            handleUnavailable(`Fatal: ${error}`);
         }
     });
 }
@@ -161,9 +160,8 @@ export function handleUnavailable(reason) {
     }
     showError(true);
     if (wsConnection) {
-        closeWebSocket();
+        closeWebSocket(reason);
     }
-    logger.error(`INSTAV - ${reason}`);
     if (config.get("autoReconnect") === true) retryAvailabilityCheck();
     if (config.get("automaticSwitching")) checkForAvailableInstance();
 }
@@ -177,7 +175,7 @@ async function retryAvailabilityCheck() {
         let retryCount = 0;
         const mainWindow = getMainWindow();
         if (wsConnection) {
-            closeWebSocket();
+            closeWebSocket("retryAvailabilityCheck");
         }
 
         while (retryCount <= WS_MAX_RETRIES) {

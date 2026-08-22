@@ -187,7 +187,7 @@ export async function reinitMainWindow() {
 	logger.info("Re-initialized main window");
 	mainWindow.destroy();
 	mainWindow = null;
-	await new Promise(resolve => setTimeout(resolve, 100));
+	await new Promise(resolve => setTimeout(resolve, 1000));
 	await createMainWindow(!config.has("currentInstance"));
 
 	await new Promise((resolve) => {
@@ -196,7 +196,7 @@ export async function reinitMainWindow() {
 
 	if (isWebSocketOpen()) {
 		logger.info("Websocket should not be open, killing...");
-		await closeWebSocket();
+		await closeWebSocket("reinitMainWindow");
 	} else {
 		logger.info("Re-initialized availability check");
 		await initWebSocketHealth(currentInstance());
