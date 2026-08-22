@@ -1,4 +1,4 @@
-import { app, powerMonitor} from "electron";
+import { app, powerMonitor } from "electron";
 import logger from "electron-log";
 import AutoLaunch from "auto-launch";
 import { isWebSocketOpen, closeWebSocket, getResponse, handleUnavailable } from "./networking.js";
@@ -12,43 +12,43 @@ let resumeHandled = false;
 const autoLauncher = new AutoLaunch({ name: "Home Assistant Desktop" });
 
 powerMonitor.on('suspend', () => {
-  if (!sleepHandled) {
-    logger.info("Home Assistant going to sleep.");
-    if (isWebSocketOpen()) {
-      closeWebSocket();
+    if (!sleepHandled) {
+        logger.info("Home Assistant going to sleep.");
+        if (isWebSocketOpen()) {
+            closeWebSocket();
+        }
+        showSleep(true);
+        sleepHandled = true;
     }
-    showSleep(true);
-    sleepHandled = true;
-  }
 });
 
 powerMonitor.on('resume', async () => {
-  if (!resumeHandled) {
-    resumeHandled = true;
-    logger.info("Power state resumed, attempting to re-connect...");
-    const instance = currentInstance();
-    try {
-      const statusCode = await getResponse(instance, 8000);
-      if (statusCode === 200) {
-        await reinitMainWindow();
-      } else {
-        handleUnavailable(statusCode);
-      }
-    } catch (error) {
-      logger.error(`WAKE - ${error.code}`);
-      logger.info("WAKE - Application will now restart...");
-      app.relaunch();
-      app.exit();
+    if (!resumeHandled) {
+        resumeHandled = true;
+        logger.info("Power state resumed, attempting to re-connect...");
+        const instance = currentInstance();
+        try {
+            const statusCode = await getResponse(instance, 8000);
+            if (statusCode === 200) {
+                await reinitMainWindow();
+            } else {
+                handleUnavailable(statusCode);
+            }
+        } catch (error) {
+            logger.error(`WAKE - ${error.code}`);
+            logger.info("WAKE - Application will now restart...");
+            app.relaunch();
+            app.exit();
+        }
     }
-  }
 });
 
 powerMonitor.on('shutdown', () => {
-  logger.info("shutdown initiated, quitting...");
-  if (isWebSocketOpen()) {
-    closeWebSocket();
-  }
-  app.quit();
+    logger.info("shutdown initiated, quitting...");
+    if (isWebSocketOpen()) {
+        closeWebSocket();
+    }
+    app.quit();
 });
 
 export function sleepHandleStatus() {
@@ -60,7 +60,7 @@ export function resumeHandleStatus() {
 }
 
 export function setSleepHandledStatus(stateSetting) {
-    if (stateSetting === true ) {
+    if (stateSetting === true) {
         sleepHandled = true;
     }
     if (stateSetting === false) {
@@ -78,14 +78,14 @@ export function setResumeHandledStatus(stateSetting) {
 }
 
 export function checkAutoStart() {
-  autoLauncher
-    .isEnabled()
-    .then((isEnabled) => {
-      autostartEnabled = isEnabled;
-    })
-    .catch((error) => {
-      logger.error(`AUTOST - ${error}`);
-    });
+    autoLauncher
+        .isEnabled()
+        .then((isEnabled) => {
+            autostartEnabled = isEnabled;
+        })
+        .catch((error) => {
+            logger.error(`AUTOST - ${error}`);
+        });
 }
 
 export function getAutoStartStatus() {
