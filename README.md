@@ -8,9 +8,9 @@ This project is fork from [iprodanovbg/homeassistant-desktop](https://github.com
 
 ## Project Status
 
-As of August 2025, the previous version of this project produced by [iprodanovbg](https://github.com/iprodanovbg/) has been archived. Given it is unlikely to return to active development, I will continue to maintain my own version here for as long as people wish to use it. The project is currently in a stable iteration, but I would like to leverage this/a future application to more tightly integrate with Home Assistant itself (device sensors etc.) when I have time. This is highly dependent on my availability, but contributions are welcome. 
+As of August 2025, the previous version of this project produced by [iprodanovbg](https://github.com/iprodanovbg/) has been archived. Given it is unlikely to return to active development, I will continue to maintain my own version here for as long as people wish to use it. I would like to leverage this/a future application to more tightly integrate with Home Assistant itself (device sensors etc.) when I have time. This is highly dependent on my availability, but contributions are welcome. Steps have been made towards that with the new API/websocket integration. 
 
-I hope this project can be of some use to others if you like/liked the app! Issues are open to submit if you have any, though please be aware I may not be able to resolve all issues quickly or comprehensively - I will do my best.
+I hope this project can be of some use to others if you like/liked the app! Issues are open to submit if you have any, though please be aware I may not be able to resolve all issues quickly or comprehensively - I will do my best, but the project is ultimately just something I'm maintaining for my own enjoyment and personal use. 
 
 ## Installation
 
@@ -22,10 +22,13 @@ Just download the latest version for your platform from the [release section](ht
 - supports multiple instances of Home Assistant (including automatic switching)
 - automatic instance discovery using bonjour
 - automatic reconnection to your instance on connection loss
-- right-click context menu for settings / reset / quit the app
+- automatic sleep and resume handling
+- right-click context menu for settings
+- choose from multiple system tray icons
 - global keyboard shortcut (defaults to Cmd/Ctrl + Alt + X but can be changed) can be enabled to show / hide Home Assistant
 - fullscreen mode (Cmd/Ctrl + Alt + Return)
 - automatic update checks (if not disabled in context menu)
+- clear cache and application data
 
 ## Notes & known issues
 
@@ -58,7 +61,7 @@ Mac:
 
 Linux (may vary on your system):
 
-`~/.config/homeassistant-desktop/Cache/*`
+`~/.cache`
 
 Additionally, please also clear the cache in your external web browser to confirm the issue only occurs with Home Assistant Desktop.
 

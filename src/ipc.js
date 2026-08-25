@@ -22,8 +22,6 @@ ipcMain.on("get-ha-instance", (event, url) => {
     }
 });
 
-
-
 ipcMain.on("reconnect", async () => {
     await reinitMainWindow();
 });
@@ -33,27 +31,46 @@ ipcMain.on("restart", () => {
     app.exit();
 });
 
-export async function getCurrentToken() {
+ipcMain.on('reload-window', () => {
+    const mainWindow = getMainWindow();
+    if (mainWindow && config.get("f5Refreshes")) {
+        mainWindow.webContents.reloadIgnoringCache();
+    }
+});
+
+export async function getCurrentToken(maxRetries = 3, delayMs = 500) {
     const mainWindow = getMainWindow();
     if (!mainWindow) return null;
-    try {
-        const token = await mainWindow.webContents.executeJavaScript(`
-            (() => {
-                try {
-                    const tokens = JSON.parse(localStorage.getItem("hassTokens"));
-                    return tokens ? tokens.access_token : null;
-                } catch {
-                    return null;
-                }
-            })()
-        `);
-        return token;
-    } catch (error) {
-        logger.error(`Could not fetch token via executeJavaScript: ${error}`);
-        return null;
-    }
-}
 
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            const tokens = await mainWindow.webContents.executeJavaScript(`
+                (() => {
+                    try {
+                        const tokens = JSON.parse(localStorage.getItem("hassTokens"));
+                        return tokens ? { access_token: tokens.access_token, expires: tokens.expires } : null;
+                    } catch {
+                        return null;
+                    }
+                })()
+            `);
+
+            if (tokens) {
+                logger.info(`Token retrieved on attempt ${attempt}`);
+                return tokens;
+            }
+
+            if (attempt < maxRetries) {
+                await new Promise(resolve => setTimeout(resolve, delayMs));
+            }
+        } catch (error) {
+            logger.error(`Could not fetch token from renderer: ${error}`);
+            return null;
+        }
+    }
+    logger.warn(`Token not available after ${maxRetries} attempts (${maxRetries * delayMs}ms)`);
+    return null;
+}
 
 async function getBonjourResult(instances) {
     return new Promise((resolve) => {

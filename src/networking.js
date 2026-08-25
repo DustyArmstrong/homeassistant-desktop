@@ -81,6 +81,12 @@ export async function initWebSocketHealth(instance) {
     const wsUrl = `${url.protocol === "https:" ? "wss" : "ws"}://${url.host}/api/websocket`;
     const accessToken = await getCurrentToken();
 
+    if (accessToken.expires && accessToken.expires < Date.now()) {
+        logger.warn(`Access token is stale (${new Date(accessToken.expires).toLocaleString()}), refreshing...`);
+        handleUnavailable("Token expired");
+        return;
+    }
+
     return new Promise((resolve, reject) => {
         try {
             wsConnection = new net.WebSocket(wsUrl);
@@ -92,7 +98,7 @@ export async function initWebSocketHealth(instance) {
                 wsConnection.send(
                     JSON.stringify({
                         type: "auth",
-                        access_token: accessToken,
+                        access_token: accessToken.access_token,
                     }),
                 );
 
@@ -122,9 +128,7 @@ export async function initWebSocketHealth(instance) {
                 }
 
                 if (msg.type === "auth_invalid") {
-                    const mainWindow = getMainWindow();
                     clearTimeout(authTimeout);
-                    mainWindow.webContents.send("retry-update", "Websocket authentication failed, trying to obtain a new token...");
                     handleUnavailable("Authentication failed!");
                 }
 
@@ -146,7 +150,7 @@ export async function initWebSocketHealth(instance) {
                 } else {
                     handleUnavailable(`Unexpected (Code: ${event.code})`);
                 }
-                
+
             };
         } catch (error) {
             handleUnavailable(`Fatal: ${error}`);

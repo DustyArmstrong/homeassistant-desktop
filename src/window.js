@@ -187,7 +187,7 @@ export async function reinitMainWindow() {
 	logger.info("Re-initialized main window");
 	mainWindow.destroy();
 	mainWindow = null;
-	await new Promise(resolve => setTimeout(resolve, 1000));
+	await new Promise(resolve => setTimeout(resolve, 500));
 	await createMainWindow(!config.has("currentInstance"));
 
 	await new Promise((resolve) => {

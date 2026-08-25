@@ -181,6 +181,15 @@ export function getMenu() {
                             unregisterKeyboardShortcut();
                         }
                     },
+                },
+                {
+                    label: "F5 Refreshes",
+                    type: "checkbox",
+                    checked: config.get("f5Refreshes"),
+                    click: () => {
+                        const isEnabled = config.get("f5Refreshes");
+                        config.set("f5Refreshes", !isEnabled);
+                    },
                 }
             ]
         },

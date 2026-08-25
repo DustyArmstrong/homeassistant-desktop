@@ -14,3 +14,10 @@ contextBridge.exposeInMainWorld('electron', {
     onRetrySuccess: (callback) => ipcRenderer.on('retry-success', (event, data) => callback(data)),
     onRetryError: (callback) => ipcRenderer.on('retry-error', (event, data) => callback(data)),
 });
+
+window.addEventListener('keydown', (event) => {
+  if (event.key === 'F5') {
+    event.preventDefault();
+    ipcRenderer.send("reload-window");
+  }
+});

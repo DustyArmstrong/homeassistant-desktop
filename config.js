@@ -16,6 +16,7 @@ const store = new Store({
     userTrayIcon: "IconWin.png",
     forceScaling: false,
     highDPIMode: false,
+    f5Refreshes: true,
     allInstances: [],
   },
 });
