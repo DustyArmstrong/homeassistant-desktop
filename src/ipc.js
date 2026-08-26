@@ -72,6 +72,41 @@ export async function getCurrentToken(maxRetries = 3, delayMs = 500) {
     return null;
 }
 
+async function waitForToken(maxWaitMs = 120000, pollIntervalMs = 1000) {
+    const mainWindow = getMainWindow();
+    if (!mainWindow) return null;
+
+    const startTime = Date.now();
+
+    while (Date.now() - startTime < maxWaitMs) {
+        try {
+            const tokens = await mainWindow.webContents.executeJavaScript(`
+                (() => {
+                    try {
+                        const tokens = JSON.parse(localStorage.getItem("hassTokens"));
+                        return tokens ? { access_token: tokens.access_token, expires: tokens.expires } : null;
+                    } catch {
+                        return null;
+                    }
+                })()
+            `);
+
+            if (tokens) {
+                logger.info(`Token detected after ${Date.now() - startTime}ms`);
+                return tokens;
+            }
+
+            await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+        } catch (error) {
+            logger.error(`Error polling for token: ${error}`);
+            return null;
+        }
+    }
+
+    logger.warn(`Authentication not completed within ${maxWaitMs}ms timeout`);
+    return null;
+}
+
 async function getBonjourResult(instances) {
     return new Promise((resolve) => {
         const foundInstances = [];
@@ -110,5 +145,19 @@ function addInstance(url) {
     instances.push(url);
     config.set("allInstances", instances);
     currentInstance(url);
-    initWebSocketHealth(url);
+    awaitTokenCreation(url);
+}
+
+async function awaitTokenCreation(url) {
+    logger.info(`Waiting for token creation at ${url}`);
+    const token = await waitForToken(120000, 1000);
+
+    if (token) {
+        logger.info(`Authentication detected, starting websocket for ${url}...`);
+        initWebSocketHealth(url);
+    } else {
+        logger.error(`Authentication timed out for ${url}`);
+        logger.warn("Application will now exit");
+        app.quit();
+    }
 }

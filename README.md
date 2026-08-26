@@ -16,6 +16,8 @@ I hope this project can be of some use to others if you like/liked the app! Issu
 
 Just download the latest version for your platform from the [release section](https://github.com/DustyArmstrong/homeassistant-desktop/releases/latest) and install!
 
+**Note**: Please see below for more details, particularly with Linux.
+
 ## Usage / Features
 
 - hover / click the tray icon to open the app
@@ -32,16 +34,44 @@ Just download the latest version for your platform from the [release section](ht
 
 ## Notes & known issues
 
-- at present support for self-signed certificates is YMMV (I recommend using Let's Encrypt to resolve this, though it is something I'll try to work on)
-- support for Linux distros may vary, app tested on Debian-based flavors (XORG) but detailed feedback is welcome
-- support for Wayland is limited - the application will still run however a number of Electron's features aren't implemented yet (e.g. shortcuts, checkbox display)
+- self-signed certificates have not been tested, but should probably work now with a migration back to the Electron native `net` module (this can access the default certificate stores e.g. on Windows)
+- support for Linux distros may vary, app tested on Debian-based flavors, Arch, Fedora (all primarily with X11) but detailed feedback is welcome
+- support for Wayland still seems a bit limited - the application will still run however a number of Electron's features aren't implemented yet (e.g. shortcuts, checkbox display)
 - if using "detached window" on Windows, instead of dragging, you have to resize it to move it
 
-### Linux Window Position
+### Linux Install Notes
+
+#### Linux Window Positioning
 
 Per above, Wayland does not support - at least in any straightforward manner for this particular project - programmatic window positioning. Some users have had success with Remember Window Positions - https://github.com/rxappdev/RememberWindowPositions. This tool allows you to manage your window positions for many applications running under Wayland, not just HA Desktop. 
 
 This section will be updated to reflect any other solutions as needed. At this time, window positioning on Wayland is not something this project can effectively handle within its own scope. 
+
+#### Linux .desktop file
+
+A sample working desktop file is provided below. Electron applications generally play better with X11, but please try your luck with Wayland as well - obviously people mainlining Linux as their daily driver (more power to you) will understand their own distro better than I can, but for those that struggle with this, this is the best I can come up with for now.
+
+In the below example, the AppImage and PNG have been renamed. This file is named `homeassistant-desktop.desktop` and should be placed in `~/.local/share/applications`. 
+
+```
+[Desktop Entry]
+Type=Application
+Name=HomeAssistantDesktop
+Exec=env GDK_BACKEND=x11 XDG_SESSION_TYPE=x11 /full/path/to/homeassistant.AppImage
+Icon=/path/to/icon/home.png
+Terminal=false
+Categories=Utility;
+```
+
+The PNG can be obtained by first extracting the AppImage (`./appimage.AppImage --appimage-extract`), and can then be found inside the extracted folder: `./squashfs-root/usr/share/icons/hicolor/1800x1800/apps`. You can change `Terminal=false` to `true` if you want to see console output (handy for viewing the live runtime logs). You may still require some deps depending on your system (e.g. something GTK-related).
+
+#### Linux Packages
+
+The `.deb`, `.rpm` and `.pacman` are provided on a "best efforts" basis. I've done as much as I feel I can currently to get this working well, or at least reasonably well, on Linux. I have tested on various flavors (Arch Linux, Fedora, Ubuntu) with mixed success, but overall the `AppImage` appears to run best. Some (like `pacman`) are still in beta with the Electron team, I did not have much success with it - while I do everything I can to provide a decent experience on Linux, much of the build components are down to Electron's design decisions and implementations. 
+
+#### Linux Errors
+
+Linux versions of the app are particularly prone to `ERR 2` (file not found) when trying to load `index.html`. This doesn't happen all the time (which would be easier to diagnose!), and may be due to namespace sandboxing, file/URL path loading mechanisms, `app.asar` load abnormalities, or just the distro's own choice of implementations. I have tried a number of different file load mechanisms, all of which do roughly the same thing (usually loads fine, sometimes doesn't). The current mechanism to load the file works for the most part on distros I have tried (Arch Linux, Fedora, Ubuntu - using AppImage). As I can't test on every possible combination of distro, I've just done what seems to work with most. 
 
 ## Troubleshooting
 

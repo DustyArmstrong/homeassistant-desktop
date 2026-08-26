@@ -1,5 +1,5 @@
 import { shell, screen, BrowserWindow } from "electron";
-import path from "path";
+import { join } from "node:path";
 import logger from "electron-log";
 import config from "../config.js";
 import { forceQuitStatus } from "./menu.js";
@@ -31,7 +31,7 @@ export async function createMainWindow(show = false) {
 		webPreferences: {
 			nodeIntegration: false,
 			contextIsolation: true,
-			preload: path.join(__dirname, "../web", "preload.cjs"),
+			preload: join(__dirname, "../web", "preload.cjs"),
 		},
 	});
 
