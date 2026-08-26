@@ -6,7 +6,7 @@ import { currentInstance } from './instance.js';
 import { getMainWindow, showWindow, createMainWindow, setWindowFocusTimer, toggleFullScreen } from './window.js';
 import { registerKeyboardShortcut, unregisterKeyboardShortcut } from "./shortcuts.js";
 import { checkForUpdates } from "./networking.js";
-import { getAutoStartStatus, checkAutoStart, modAutoLaunch } from "./power.js";
+import { getAutoStartStatus, modAutoLaunch } from "./power.js";
 
 let tray;
 let forceQuit = false;
@@ -118,14 +118,17 @@ export function getMenu() {
             label: "Start at Login",
             type: "checkbox",
             checked: getAutoStartStatus(),
-            click: () => {
-                if (getAutoStartStatus()) {
-                    modAutoLaunch(true);
-                } else {
-                    modAutoLaunch(false);
+            click: async (menuItem) => {
+                const stateTarget = menuItem.checked;
+                try {
+                    await modAutoLaunch(stateTarget);
+                    menuItem.checked = stateTarget;
+                    app.relaunch();
+                    app.exit();
+                } catch (error) {
+                    logger.error(`AUTOST - failed to toggle setting: ${error}`);
+                    menuItem.checked = !stateTarget;
                 }
-
-                checkAutoStart();
             },
         },
         {

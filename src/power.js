@@ -77,26 +77,25 @@ export function setResumeHandledStatus(stateSetting) {
     }
 }
 
-export function checkAutoStart() {
-    autoLauncher
-        .isEnabled()
-        .then((isEnabled) => {
-            autostartEnabled = isEnabled;
-        })
-        .catch((error) => {
-            logger.error(`AUTOST - ${error}`);
-        });
+export async function checkAutoStart() {
+    try {
+        autostartEnabled = await autoLauncher.isEnabled();
+        return autostartEnabled;
+    } catch (error) {
+        logger.error(`AUTOST - Check failed: ${error}`);
+        autostartEnabled = false;
+        return false;
+    }
 }
 
 export function getAutoStartStatus() {
     return autostartEnabled;
 }
 
-export function modAutoLaunch(stateSetting) {
-    if (stateSetting === true) {
-        autoLauncher.disable();
-    }
-    if (!stateSetting === false) {
-        autoLauncher.enable();
+export async function modAutoLaunch(stateSetting) {
+    if (stateSetting) {
+        return await autoLauncher.enable();
+    } else {
+        return await autoLauncher.disable();
     }
 }

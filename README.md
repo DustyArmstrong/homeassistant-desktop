@@ -49,9 +49,9 @@ This section will be updated to reflect any other solutions as needed. At this t
 
 #### Linux .desktop file
 
-A sample working desktop file is provided below. Electron applications generally play better with X11, but please try your luck with Wayland as well - obviously people mainlining Linux as their daily driver (more power to you) will understand their own distro better than I can, but for those that struggle with this, this is the best I can come up with for now.
+A sample working desktop file is provided below. Electron applications seem to play better with X11, but please try your luck with Wayland as well - obviously people mainlining Linux as their daily driver (more power to you) will understand their own distro better than I can (even if I use Linux daily too), but for those that struggle with this, this is the best I can come up with for now. 
 
-In the below example, the AppImage and PNG have been renamed. This file is named `homeassistant-desktop.desktop` and should be placed in `~/.local/share/applications`. 
+In the below example, the AppImage and PNG have been renamed. This file is named `org.homeassistant.desktop` and should be placed in `~/.local/share/applications`. 
 
 ```
 [Desktop Entry]
@@ -63,7 +63,19 @@ Terminal=false
 Categories=Utility;
 ```
 
-The PNG can be obtained by first extracting the AppImage (`./appimage.AppImage --appimage-extract`), and can then be found inside the extracted folder: `./squashfs-root/usr/share/icons/hicolor/1800x1800/apps`. You can change `Terminal=false` to `true` if you want to see console output (handy for viewing the live runtime logs). You may still require some deps depending on your system (e.g. something GTK-related).
+Or with native Wayland: 
+
+```
+[Desktop Entry]
+Type=Application
+Name=HomeAssistantDesktop
+Exec=/full/path/to/homeassistant.AppImage --enable-features=UseOzonePlatform --ozone-platform=wayland --enable-features=WaylandWindowDecorations
+Icon=/path/to/icon/home.png
+Terminal=false
+Categories=Utility;
+```
+
+The PNG can be obtained by first extracting the AppImage (`./appimage.AppImage --appimage-extract`), and can then be found inside the extracted folder: `./squashfs-root/usr/share/icons/hicolor/1800x1800/apps`. You can change `Terminal=false` to `true` if you want to see console output (handy for viewing the live runtime logs). You may still require some deps depending on your system (e.g. something GTK-related). Depending on the build of Electron, there can be many issues with Electron on Linux.
 
 #### Linux Packages
 

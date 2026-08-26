@@ -55,14 +55,15 @@
       ],
       "extendInfo": {
         "LSUIElement": true
-      }
+      },
+      "icon": "build/homeassistant.icns"
     },
     "win": {
       "icon": "./build/iconwin.png"
     },
     "linux": {
       "category": "public.app-category.productivity",
-      "executableName": "Home Assistant Desktop",
+      "executableName": "homeassistant-desktop",
       "artifactName": "${productName}-v${version}-${os}-${arch}.${ext}"
     }
   }

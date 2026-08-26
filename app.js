@@ -27,6 +27,10 @@ if (process.platform === "darwin") {
 	app.dock.hide();
 }
 
+if (process.platform === "linux") {
+	app.setDesktopName("org.homeassistant.desktop");
+}
+
 if (typeof global.location === "undefined") {
 	global.location = {
 		href: "http://home-assistant-desktop",
@@ -50,7 +54,7 @@ if (!gotTheLock) {
 }
 
 app.whenReady().then(async () => {
-	checkAutoStart();
+	await checkAutoStart();
 	setSleepHandledStatus(false);
 	setResumeHandledStatus(false);
 
