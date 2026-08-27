@@ -5,13 +5,15 @@ import config from "../config.js";
 import { currentInstance, checkForAvailableInstance } from "./instance.js";
 import { getMainWindow, reinitMainWindow } from "./window.js";
 import { showError } from "./display.js";
-import { getCurrentToken } from "./ipc.js";
+import { getCurrentToken, waitForToken } from "./ipc.js";
 
 let retryingAvailability = false;
 let wsConnection = null;
 const WS_MAX_RETRIES = 5;
 const WS_RETRY_DELAY = 6000;
-let wsConnectionClosed = false;
+let wsClosedIntentional = false;
+let wsClosedResolve = null;
+
 
 export async function checkForUpdates() {
     try {
@@ -68,12 +70,17 @@ export function isWebSocketOpen() {
 }
 
 export function closeWebSocket(source) {
-    if (isWebSocketOpen()) {
-        wsConnectionClosed = true;
-        wsConnection.close(4000);
-        wsConnection = null;
+    return new Promise((resolve) => {
+        if (!isWebSocketOpen()) {
+            resolve();
+            return;
+        }
+
+        wsClosedResolve = resolve;
+        wsClosedIntentional = true;
+        wsConnection.close(4000);       
         logger.info(`INSTAV - Websocket closed (${source})`);
-    }
+    });
 }
 
 export async function initWebSocketHealth(instance) {
@@ -81,19 +88,43 @@ export async function initWebSocketHealth(instance) {
     const wsUrl = `${url.protocol === "https:" ? "wss" : "ws"}://${url.host}/api/websocket`;
     const accessToken = await getCurrentToken();
 
+    if (!accessToken?.expires) {
+        const token = await waitForToken(120000, 1000);
+        logger.warn("Waiting for authentication with instance...");
+        if (token) { 
+            logger.info(`Authentication detected, starting websocket for ${url}...`);
+            await initWebSocketHealth(url);
+            return;
+        } else {
+            logger.error(`Authentication issue for ${url}`);
+            logger.warn("Application will now exit");
+            if (isWebSocketOpen) {
+                closeWebSocket("token authentication issue - please sign in to Home Assistant");
+            }
+            app.quit();
+        }
+    }
+
     if (accessToken.expires && accessToken.expires < Date.now()) {
         logger.warn(`Access token is stale (${new Date(accessToken.expires).toLocaleString()}), refreshing...`);
         handleUnavailable("Token expired");
         return;
     }
 
+    let lastActivityTime = Date.now();
+    let authTimeout = null;
+    let heartbeatTimer = null;
+
     return new Promise((resolve, reject) => {
         try {
             wsConnection = new net.WebSocket(wsUrl);
-            let authTimeout;
+            
+            wsClosedIntentional = false;
+            wsClosedResolve = null;
 
             wsConnection.onopen = () => {
                 logger.info("Websocket connection established.");
+                lastActivityTime = Date.now();
 
                 wsConnection.send(
                     JSON.stringify({
@@ -110,6 +141,7 @@ export async function initWebSocketHealth(instance) {
             };
 
             wsConnection.onmessage = (event) => {
+                lastActivityTime = Date.now();
                 const msg = JSON.parse(event.data);
 
                 if (msg.type === "auth_ok") {
@@ -124,35 +156,54 @@ export async function initWebSocketHealth(instance) {
                         }),
                     );
 
+                    heartbeatTimer = setInterval(() => {
+                        if (Date.now() - lastActivityTime > 60000) {
+                            logger.warn("That dang ol' pinger ain't ponged dang near 60 seconds!");
+                            clearInterval(heartbeatTimer);
+                            heartbeatTimer = null;
+                            handleUnavailable("Connection timeout - no activity");
+                        }
+                    }, 15000);
+
                     resolve(true);
                 }
 
                 if (msg.type === "auth_invalid") {
                     clearTimeout(authTimeout);
+                    clearInterval(heartbeatTimer);
                     handleUnavailable("Authentication failed!");
                 }
 
-                if (msg.type === "event" && msg.event?.data?.entity_id === "homeassistant.home_assistant") {
-                    logger.info(msg);
+                if (msg.type === "event") {
+                    //Set up to receive events in future - works though!
                 }
             };
 
             wsConnection.onerror = (error) => {
                 clearTimeout(authTimeout);
+                clearInterval(heartbeatTimer);
                 handleUnavailable(`General error ${error}`);
             };
 
             wsConnection.onclose = (event) => {
                 clearTimeout(authTimeout);
-                if (wsConnectionClosed) {
-                    logger.info("Websocket connection closed.");
-                    wsConnectionClosed = false;
-                } else {
-                    handleUnavailable(`Unexpected (Code: ${event.code})`);
+                clearInterval(heartbeatTimer);
+                
+                if (wsClosedIntentional) {
+                    const savedResolve = wsClosedResolve;
+                    wsClosedResolve = null;
+                    wsClosedIntentional = false;
+                    wsConnection = null;
+                    savedResolve(); 
+                    logger.info("Websocket connection closed gracefully");
+                    return; 
                 }
 
+                handleUnavailable(`Unexpected close (Code: ${event.code})`);
+                wsConnection = null;
             };
         } catch (error) {
+            clearInterval(heartbeatTimer);
             handleUnavailable(`Fatal: ${error}`);
         }
     });
@@ -188,6 +239,7 @@ async function retryAvailabilityCheck() {
                 if (statusCode === 200) {
                     logger.info("Connection re-established!");
                     mainWindow.webContents.send("retry-success", "Instance alive, reconnecting...");
+                    retryingAvailability = false;
                     await reinitMainWindow();
                     break;
                 }
@@ -198,7 +250,9 @@ async function retryAvailabilityCheck() {
             }
         }
     } finally {
-        retryingAvailability = false;
+        if (retryingAvailability) {
+            retryingAvailability = false;
+        }
     }
 }
 
@@ -213,4 +267,3 @@ async function handleRetryAttempt(retryCount, mainWindow, errorMessage) {
         await new Promise((retry) => setTimeout(retry, WS_RETRY_DELAY));
     }
 }
-

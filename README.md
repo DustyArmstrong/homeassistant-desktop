@@ -30,7 +30,9 @@ Just download the latest version for your platform from the [release section](ht
 - global keyboard shortcut (defaults to Cmd/Ctrl + Alt + X but can be changed) can be enabled to show / hide Home Assistant
 - fullscreen mode (Cmd/Ctrl + Alt + Return)
 - automatic update checks (if not disabled in context menu)
-- clear cache and application data
+- clear cache and application data (soft, full, complete)
+- refresh from inside the application with F5 (browser refresh ignoring cache)
+- websocket token expiry can be set to last indefinitely (Home Assistant > your user > security > 3 dot > Disable token expiration)
 
 ## Notes & known issues
 
@@ -83,7 +85,7 @@ The `.deb`, `.rpm` and `.pacman` are provided on a "best efforts" basis. I've do
 
 #### Linux Errors
 
-Linux versions of the app are particularly prone to `ERR 2` (file not found) when trying to load `index.html`. This doesn't happen all the time (which would be easier to diagnose!), and may be due to namespace sandboxing, file/URL path loading mechanisms, `app.asar` load abnormalities, or just the distro's own choice of implementations. I have tried a number of different file load mechanisms, all of which do roughly the same thing (usually loads fine, sometimes doesn't). The current mechanism to load the file works for the most part on distros I have tried (Arch Linux, Fedora, Ubuntu - using AppImage). As I can't test on every possible combination of distro, I've just done what seems to work with most. 
+Linux versions of the app are particularly prone to `ERR 2` (file not found) when trying to load `index.html`. This doesn't happen all the time (which would be easier to diagnose!), and may be due to namespace sandboxing, file/URL path loading mechanisms, `app.asar` load abnormalities (particularly on crashes, check `ls -lah /tmp`), or just the distro's own choice of implementations. I have tried a number of different file load mechanisms, all of which do roughly the same thing (usually loads fine, sometimes doesn't). The current mechanism to load the file works for the most part on distros I have tried (Arch Linux, Fedora, Ubuntu - using AppImage). As I can't test on every possible combination of distro, I've just done what seems to work with most. Will continue working on Linux stability for future releases.  
 
 ## Troubleshooting
 

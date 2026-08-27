@@ -185,6 +185,10 @@ export async function createMainWindow(show = false) {
 
 export async function reinitMainWindow() {
 	logger.info("Re-initialized main window");
+	if (isWebSocketOpen()) {
+		logger.info("Closing stale websocket...");
+		await closeWebSocket("reinitMainWindow");
+	}
 	mainWindow.destroy();
 	mainWindow = null;
 	await new Promise(resolve => setTimeout(resolve, 500));
@@ -194,13 +198,9 @@ export async function reinitMainWindow() {
 		mainWindow.webContents.once("did-finish-load", resolve);
 	});
 
-	if (isWebSocketOpen()) {
-		logger.info("Websocket should not be open, killing...");
-		await closeWebSocket("reinitMainWindow");
-	} else {
-		logger.info("Re-initialized availability check");
-		await initWebSocketHealth(currentInstance());
-	}
+	await new Promise(resolve => setTimeout(resolve, 500));
+	logger.info("Re-initialized availability check");
+	await initWebSocketHealth(currentInstance());
 }
 
 export function showWindow() {

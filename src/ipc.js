@@ -72,7 +72,7 @@ export async function getCurrentToken(maxRetries = 3, delayMs = 500) {
     return null;
 }
 
-async function waitForToken(maxWaitMs = 120000, pollIntervalMs = 1000) {
+export async function waitForToken(maxWaitMs = 120000, pollIntervalMs = 1000) {
     const mainWindow = getMainWindow();
     if (!mainWindow) return null;
 

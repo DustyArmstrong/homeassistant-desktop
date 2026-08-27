@@ -5,7 +5,7 @@ import config from "../config.js";
 import { currentInstance } from './instance.js';
 import { getMainWindow, showWindow, createMainWindow, setWindowFocusTimer, toggleFullScreen } from './window.js';
 import { registerKeyboardShortcut, unregisterKeyboardShortcut } from "./shortcuts.js";
-import { checkForUpdates } from "./networking.js";
+import { checkForUpdates, closeWebSocket, isWebSocketOpen } from "./networking.js";
 import { getAutoStartStatus, modAutoLaunch } from "./power.js";
 
 let tray;
@@ -453,6 +453,9 @@ export function getMenu() {
         {
             label: "Quit",
             click: () => {
+                if (isWebSocketOpen()) {
+                    closeWebSocket("application quit");
+                }
                 forceQuit = true;
                 app.quit();
             },
