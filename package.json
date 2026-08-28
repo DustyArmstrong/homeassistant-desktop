@@ -4,40 +4,41 @@
     "type": "git",
     "url": "https://github.com/DustyArmstrong/homeassistant-desktop"
   },
-  "version": "1.6.10",
+  "version": "1.7.0",
   "description": "Desktop App (Windows / macOS / Linux) for Home Assistant built with Electron",
   "author": "Dusty Armstrong <dusty@dustcloud.dev>",
   "license": "Apache-2.0",
+  "desktopName": "org.homeassistant.desktop",
   "type": "module",
   "main": "app.js",
   "scripts": {
     "start": "electron app.js",
     "build-local-mac": "electron-builder build --mac --x64 --publish never",
     "build-local-mac-arm": "electron-builder build --mac --arm64 --publish never",
-    "build-local-linux": "electron-builder build --linux appimage deb rpm --x64 --publish never",
-    "build-local-linux-arm": "electron-builder build --linux appimage deb rpm --arm64 --publish never",
+    "build-local-linux": "electron-builder build --linux appimage deb rpm pacman --x64 --publish never",
+    "build-local-linux-arm": "electron-builder build --linux appimage deb rpm pacman --arm64 --publish never",
     "build-local-win": "electron-builder build --win --x64 --publish never",
     "build-local-win-arm": "electron-builder build --win --arm64 --publish never",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
-    "auto-launch": "~5.0.6",
-    "axios": "~1.13.6",
-    "bonjour-service": "~1.3.0",
-    "electron-log": "~5.4.3",
-    "electron-store": "~11.0.2",
-    "electron-traywindow-positioner": "~1.2.1",
-    "electron-updater": "~6.8.3",
-    "semver": "~7.7.4"
+    "auto-launch": "^5.0.6",
+    "bonjour-service": "^1.4.4",
+    "electron-log": "^5.4.4",
+    "electron-store": "^11.0.2",
+    "electron-traywindow-positioner": "^1.2.1",
+    "electron-updater": "^6.8.9",
+    "home-assistant-js-websocket": "^9.6.0",
+    "npm-check-updates": "^23.0.2",
+    "semver": "^7.8.5"
   },
   "devDependencies": {
-    "@eslint/js": "~10.0.1",
-    "electron": "~41.0.3",
-    "electron-builder": "~26.8.1",
-    "eslint": "~10.1.0",
-    "eslint-plugin-unused-imports": "~4.4.1",
-    "globals": "~17.4.0",
-    "npm-check-updates": "~19.6.5"
+    "@eslint/js": "^10.0.1",
+    "electron": "^43.4.1",
+    "electron-builder": "^26.15.3",
+    "eslint": "^10.8.1",
+    "eslint-plugin-unused-imports": "^4.4.1",
+    "globals": "^17.11.0"
   },
   "engines": {
     "node": ">= 16"
@@ -54,14 +55,15 @@
       ],
       "extendInfo": {
         "LSUIElement": true
-      }
+      },
+      "icon": "build/homeassistant.icns"
     },
     "win": {
       "icon": "./build/iconwin.png"
     },
     "linux": {
       "category": "public.app-category.productivity",
-      "executableName": "Home Assistant Desktop",
+      "executableName": "homeassistant-desktop",
       "artifactName": "${productName}-v${version}-${os}-${arch}.${ext}"
     }
   }

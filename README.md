@@ -8,15 +8,15 @@ This project is fork from [iprodanovbg/homeassistant-desktop](https://github.com
 
 ## Project Status
 
-**A note on NPM supply chain attacks:** Attacks on NPM packages have become increasingly common. While the version of Axios used in this project is not implicated in that compromise (no associated CVE), I do however feel it necessary to take some steps to try and reduce the impact of future incidents. This project is maintained entirely by a human - in some ways this benefits things as I'm slow to update deps anyway (partly for this reason!) and don't automate everything, but I will try and take more of a hardline approach to dep audits going forward. 
+As of August 2025, the previous version of this project produced by [iprodanovbg](https://github.com/iprodanovbg/) has been archived. Given it is unlikely to return to active development, I will continue to maintain my own version here for as long as people wish to use it. I would like to leverage this/a future application to more tightly integrate with Home Assistant itself (device sensors etc.) when I have time. This is highly dependent on my availability, but contributions are welcome. Steps have been made towards that with the new API/websocket integration. 
 
-As of August 2025, the previous version of this project produced by [iprodanovbg](https://github.com/iprodanovbg/) has been archived. Given it is unlikely to return to active development, I will continue to maintain my own version here for as long as people wish to use it. The project is currently in a stable iteration, but I would like to leverage this/a future application to more tightly integrate with Home Assistant itself (device sensors etc.) when I have time. This is highly dependent on my availability, but contributions are welcome. 
-
-I hope this project can be of some use to others if you like/liked the app! Issues are open to submit if you have any, though please be aware I may not be able to resolve all issues quickly or comprehensively - I will do my best.
+I hope this project can be of some use to others if you like/liked the app! Issues are open to submit if you have any, though please be aware I may not be able to resolve all issues quickly or comprehensively - I will do my best, but the project is ultimately just something I'm maintaining for my own enjoyment and personal use. 
 
 ## Installation
 
 Just download the latest version for your platform from the [release section](https://github.com/DustyArmstrong/homeassistant-desktop/releases/latest) and install!
+
+**Note**: Please see below for more details, particularly with Linux.
 
 ## Usage / Features
 
@@ -24,23 +24,68 @@ Just download the latest version for your platform from the [release section](ht
 - supports multiple instances of Home Assistant (including automatic switching)
 - automatic instance discovery using bonjour
 - automatic reconnection to your instance on connection loss
-- right-click context menu for settings / reset / quit the app
+- automatic sleep and resume handling
+- right-click context menu for settings
+- choose from multiple system tray icons
 - global keyboard shortcut (defaults to Cmd/Ctrl + Alt + X but can be changed) can be enabled to show / hide Home Assistant
 - fullscreen mode (Cmd/Ctrl + Alt + Return)
 - automatic update checks (if not disabled in context menu)
+- clear cache and application data (soft, full, complete)
+- refresh from inside the application with F5 (browser refresh ignoring cache)
+- websocket token expiry can be set to last indefinitely (Home Assistant > your user > security > 3 dot > Disable token expiration)
 
 ## Notes & known issues
 
-- at present support for self-signed certificates is YMMV (I recommend using Let's Encrypt to resolve this, though it is something I'll try to work on)
-- support for Linux distros may vary, app tested on Debian-based flavors (XORG) but detailed feedback is welcome
-- support for Wayland is limited - the application will still run however a number of Electron's features aren't implemented yet (e.g. shortcuts, checkbox display)
+- self-signed certificates have not been tested, but should probably work now with a migration back to the Electron native `net` module (this can access the default certificate stores e.g. on Windows)
+- support for Linux distros may vary, app tested on Debian-based flavors, Arch, Fedora (all primarily with X11) but detailed feedback is welcome
+- support for Wayland still seems a bit limited - the application will still run however a number of Electron's features aren't implemented yet (e.g. shortcuts, checkbox display)
 - if using "detached window" on Windows, instead of dragging, you have to resize it to move it
 
-### Linux Window Position
+### Linux Install Notes
+
+#### Linux Window Positioning
 
 Per above, Wayland does not support - at least in any straightforward manner for this particular project - programmatic window positioning. Some users have had success with Remember Window Positions - https://github.com/rxappdev/RememberWindowPositions. This tool allows you to manage your window positions for many applications running under Wayland, not just HA Desktop. 
 
 This section will be updated to reflect any other solutions as needed. At this time, window positioning on Wayland is not something this project can effectively handle within its own scope. 
+
+#### Linux .desktop file
+
+A sample working desktop file is provided below. Electron applications seem to play better with X11, but please try your luck with Wayland as well - obviously people mainlining Linux as their daily driver (more power to you) will understand their own distro better than I can (even if I use Linux daily too), but for those that struggle with this, this is the best I can come up with for now. 
+
+In the below example, the AppImage and PNG have been renamed. This file is named `org.homeassistant.desktop` and should be placed in `~/.local/share/applications`. 
+
+```
+[Desktop Entry]
+Type=Application
+Name=HomeAssistantDesktop
+Exec=env GDK_BACKEND=x11 XDG_SESSION_TYPE=x11 /full/path/to/homeassistant.AppImage
+Icon=/path/to/icon/home.png
+Terminal=false
+Categories=Utility;
+```
+
+Or with native Wayland: 
+
+```
+[Desktop Entry]
+Type=Application
+Name=HomeAssistantDesktop
+Exec=/full/path/to/homeassistant.AppImage --enable-features=UseOzonePlatform --ozone-platform=wayland --enable-features=WaylandWindowDecorations
+Icon=/path/to/icon/home.png
+Terminal=false
+Categories=Utility;
+```
+
+The PNG can be obtained by first extracting the AppImage (`./appimage.AppImage --appimage-extract`), and can then be found inside the extracted folder: `./squashfs-root/usr/share/icons/hicolor/1800x1800/apps`. You can change `Terminal=false` to `true` if you want to see console output (handy for viewing the live runtime logs). You may still require some deps depending on your system (e.g. something GTK-related). Depending on the build of Electron, there can be many issues with Electron on Linux.
+
+#### Linux Packages
+
+The `.deb`, `.rpm` and `.pacman` are provided on a "best efforts" basis. I've done as much as I feel I can currently to get this working well, or at least reasonably well, on Linux. I have tested on various flavors (Arch Linux, Fedora, Ubuntu) with mixed success, but overall the `AppImage` appears to run best. Some (like `pacman`) are still in beta with the Electron team, I did not have much success with it - while I do everything I can to provide a decent experience on Linux, much of the build components are down to Electron's design decisions and implementations. 
+
+#### Linux Errors
+
+Linux versions of the app are particularly prone to `ERR 2` (file not found) when trying to load `index.html`. This doesn't happen all the time (which would be easier to diagnose!), and may be due to namespace sandboxing, file/URL path loading mechanisms, `app.asar` load abnormalities (particularly on crashes, check `ls -lah /tmp`), or just the distro's own choice of implementations. I have tried a number of different file load mechanisms, all of which do roughly the same thing (usually loads fine, sometimes doesn't). The current mechanism to load the file works for the most part on distros I have tried (Arch Linux, Fedora, Ubuntu - using AppImage). As I can't test on every possible combination of distro, I've just done what seems to work with most. Will continue working on Linux stability for future releases.  
 
 ## Troubleshooting
 
@@ -60,7 +105,7 @@ Mac:
 
 Linux (may vary on your system):
 
-`~/.config/homeassistant-desktop/Cache/*`
+`~/.cache`
 
 Additionally, please also clear the cache in your external web browser to confirm the issue only occurs with Home Assistant Desktop.
 
