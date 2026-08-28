@@ -35,7 +35,7 @@ powerMonitor.on('resume', async () => {
                 handleUnavailable(statusCode);
             }
         } catch (error) {
-            logger.error(`WAKE - ${error.code}`);
+            logger.error(`WAKE - ${error}`);
             logger.info("WAKE - Application will now restart...");
             app.relaunch();
             app.exit();

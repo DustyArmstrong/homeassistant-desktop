@@ -114,6 +114,8 @@ export async function initWebSocketHealth(instance) {
     let lastActivityTime = Date.now();
     let authTimeout = null;
     let heartbeatTimer = null;
+    let pingTimer = null;
+    let msgId = 1;
 
     return new Promise((resolve, reject) => {
         try {
@@ -148,22 +150,25 @@ export async function initWebSocketHealth(instance) {
                     clearTimeout(authTimeout);
                     logger.info("Websocket authentication successful!");
 
-                    wsConnection.send(
-                        JSON.stringify({
-                            id: 1,
-                            type: "subscribe_events",
-                            event_type: "state_changed",
-                        }),
-                    );
-
                     heartbeatTimer = setInterval(() => {
-                        if (Date.now() - lastActivityTime > 60000) {
+                        if (Date.now() - lastActivityTime > 90000) {
                             logger.warn("That dang ol' pinger ain't ponged dang near 60 seconds!");
                             clearInterval(heartbeatTimer);
+                            clearInterval(pingTimer);
                             heartbeatTimer = null;
+                            pingTimer = null;
                             handleUnavailable("Connection timeout - no activity");
                         }
                     }, 15000);
+
+                    pingTimer = setInterval(() => {
+                        wsConnection.send(
+                            JSON.stringify({
+                                id: msgId++,
+                                type: "ping",
+                            }),
+                        );
+                    }, 30000);
 
                     resolve(true);
                 }
@@ -171,23 +176,31 @@ export async function initWebSocketHealth(instance) {
                 if (msg.type === "auth_invalid") {
                     clearTimeout(authTimeout);
                     clearInterval(heartbeatTimer);
+                    clearInterval(pingTimer);
+                    heartbeatTimer = null;
+                    pingTimer = null;
+                    authTimeout = null;
                     handleUnavailable("Authentication failed!");
-                }
-
-                if (msg.type === "event") {
-                    //Set up to receive events in future - works though!
                 }
             };
 
             wsConnection.onerror = (error) => {
                 clearTimeout(authTimeout);
                 clearInterval(heartbeatTimer);
+                clearInterval(pingTimer);
+                heartbeatTimer = null;
+                pingTimer = null;
+                authTimeout = null;
                 handleUnavailable(`General error ${error}`);
             };
 
             wsConnection.onclose = (event) => {
                 clearTimeout(authTimeout);
                 clearInterval(heartbeatTimer);
+                clearInterval(pingTimer);
+                heartbeatTimer = null;
+                pingTimer = null;
+                authTimeout = null;
                 
                 if (wsClosedIntentional) {
                     const savedResolve = wsClosedResolve;
@@ -204,6 +217,10 @@ export async function initWebSocketHealth(instance) {
             };
         } catch (error) {
             clearInterval(heartbeatTimer);
+            clearInterval(pingTimer);
+            heartbeatTimer = null;
+            pingTimer = null;
+            authTimeout = null;
             handleUnavailable(`Fatal: ${error}`);
         }
     });
@@ -216,6 +233,9 @@ export function handleUnavailable(reason) {
     showError(true);
     if (wsConnection) {
         closeWebSocket(reason);
+    }
+    if (reason === "Authentication failed!") {
+        return;
     }
     if (config.get("autoReconnect") === true) retryAvailabilityCheck();
     if (config.get("automaticSwitching")) checkForAvailableInstance();
