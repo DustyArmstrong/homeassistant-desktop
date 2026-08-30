@@ -154,7 +154,7 @@ async function awaitTokenCreation(url) {
 
     if (token) {
         logger.info(`Authentication detected, starting websocket for ${url}...`);
-        initWebSocketHealth(url);
+        await initWebSocketHealth(url);
     } else {
         logger.error(`Authentication timed out for ${url}`);
         logger.warn("Application will now exit");

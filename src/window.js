@@ -61,8 +61,6 @@ export async function createMainWindow(show = false) {
 	};
 	await tryLoadURL();
 
-	createTray();
-
 	mainWindow.webContents.on("did-fail-load", async (e, errorCode, validatedURL) => {
 		logger.error(`WEBCONT - ${validatedURL} (code ${errorCode})`);
 		if (!mainWindowLoaded || winIsReloading) {
@@ -180,6 +178,7 @@ export async function createMainWindow(show = false) {
 	toggleFullScreen(!!config.get("fullScreen"));
 
 	initialized = true;
+	createTray();
 	return mainWindow;
 }
 

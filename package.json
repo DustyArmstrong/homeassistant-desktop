@@ -4,7 +4,7 @@
     "type": "git",
     "url": "https://github.com/DustyArmstrong/homeassistant-desktop"
   },
-  "version": "1.7.0",
+  "version": "1.7.1",
   "description": "Desktop App (Windows / macOS / Linux) for Home Assistant built with Electron",
   "author": "Dusty Armstrong <dusty@dustcloud.dev>",
   "license": "Apache-2.0",
@@ -28,8 +28,6 @@
     "electron-store": "^11.0.2",
     "electron-traywindow-positioner": "^1.2.1",
     "electron-updater": "^6.8.9",
-    "home-assistant-js-websocket": "^9.6.0",
-    "npm-check-updates": "^23.0.2",
     "semver": "^7.8.5"
   },
   "devDependencies": {
@@ -38,6 +36,7 @@
     "electron-builder": "^26.15.3",
     "eslint": "^10.8.1",
     "eslint-plugin-unused-imports": "^4.4.1",
+    "npm-check-updates": "^23.0.2",
     "globals": "^17.11.0"
   },
   "engines": {

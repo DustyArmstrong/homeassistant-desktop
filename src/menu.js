@@ -519,6 +519,9 @@ export function createTray() {
 
     tray.on("click", () => {
         const mainWindow = getMainWindow();
+        if (!mainWindow) {
+            return;
+        }
         if (mainWindow.isVisible()) {
             mainWindow.hide();
 
@@ -532,6 +535,9 @@ export function createTray() {
 
     tray.on("right-click", () => {
         const mainWindow = getMainWindow();
+        if (!mainWindow) {
+            return;
+        }
         if (!config.get("detachedMode")) {
             mainWindow.hide();
         }
@@ -543,6 +549,9 @@ export function createTray() {
 
     tray.on("mouse-move", () => {
         const mainWindow = getMainWindow();
+        if (!mainWindow) {
+            return;
+        }
         if (config.get("detachedMode") || mainWindow.isAlwaysOnTop() || config.get("disableHover")) {
             return;
         }
