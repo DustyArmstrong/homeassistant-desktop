@@ -26,19 +26,23 @@ powerMonitor.on('resume', async () => {
     if (!resumeHandled) {
         resumeHandled = true;
         logger.info("Power state resumed, attempting to re-connect...");
+        await new Promise(resolve => setTimeout(resolve, 2000));
         const instance = currentInstance();
         try {
             const statusCode = await getResponse(instance, 8000);
             if (statusCode === 200) {
                 await reinitMainWindow();
             } else {
-                handleUnavailable(statusCode);
+                handleUnavailable(`WAKE - Network unavailable: ${statusCode}`);
             }
         } catch (error) {
-            logger.error(`WAKE - ${error}`);
+            logger.error(`WAKE - Fatal error: ${error.message}`);
             logger.info("WAKE - Application will now restart...");
             app.relaunch();
             app.exit();
+        } finally {
+            sleepHandled = false;
+            resumeHandled = false;
         }
     }
 });
