@@ -45,35 +45,33 @@ export async function createMainWindow(show = false) {
 			mainWindowLoaded = true;
 			return true;
 		} catch (error) {
-			logger.error(`MAINWIN - (${attempt}):`, error);
+			logger.error(`MAINWIN | failed to load on attempt ${attempt} | ${error}`);
 			if (attempt < maxAttempts) {
 				await new Promise((resolve) => setTimeout(resolve, 100 * attempt));
 				return tryLoadURL(attempt + 1, maxAttempts);
 			}
 			try {
-				logger.error("MAINWIN - Unable to load window, cannot resolve network");
+				logger.error("MAINWIN | unable to load URL, cannot resolve network");
 				showError(true);
 			} catch (error) {
-				logger.error(`MAINWIN - ${error}`);
+				logger.error(`MAINWIN | fatal error encountered loading URL | ${error}`);
 			}
 			return false;
 		}
 	};
 	await tryLoadURL();
 
-	createTray();
-
 	mainWindow.webContents.on("did-fail-load", async (e, errorCode, validatedURL) => {
-		logger.error(`WEBCONT - ${validatedURL} (code ${errorCode})`);
+		logger.error(`WEBCONT | ${validatedURL} | ${errorCode}`);
 		if (!mainWindowLoaded || winIsReloading) {
-			logger.info("Window hasn't loaded yet or is already reloading...");
+			logger.warn("Window hasn't loaded yet or is already reloading...");
 			return;
 		}
 		winIsReloading = true;
 		try {
 			await tryLoadURL(1);
 		} catch (error) {
-			logger.error(`WEBCONT - ${error}`);
+			logger.error(`WEBCONT | webcontents failed to load | ${error}`);
 			showError(true);
 		} finally {
 			winIsReloading = false;
@@ -88,7 +86,7 @@ export async function createMainWindow(show = false) {
 				mainWindow.webContents.reload();
 				logger.info("Renderer rebooted successfully.");
 			} catch (error) {
-				logger.error(`RENDR - ${error}`);
+				logger.error(`RENDR | renderer process failed | ${error}`);
 				showError(true);
 			}
 		}
@@ -180,13 +178,14 @@ export async function createMainWindow(show = false) {
 	toggleFullScreen(!!config.get("fullScreen"));
 
 	initialized = true;
+	createTray();
 	return mainWindow;
 }
 
 export async function reinitMainWindow() {
 	logger.info("Re-initialized main window");
 	if (isWebSocketOpen()) {
-		logger.info("Closing stale websocket...");
+		logger.warn("Closing stale websocket...");
 		await closeWebSocket("reinitMainWindow");
 	}
 	mainWindow.destroy();

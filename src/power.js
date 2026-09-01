@@ -15,7 +15,7 @@ powerMonitor.on('suspend', () => {
     if (!sleepHandled) {
         logger.info("Home Assistant going to sleep.");
         if (isWebSocketOpen()) {
-            closeWebSocket("Suspending machine");
+            closeWebSocket("machine going to sleep");
         }
         showSleep(true);
         sleepHandled = true;
@@ -26,27 +26,31 @@ powerMonitor.on('resume', async () => {
     if (!resumeHandled) {
         resumeHandled = true;
         logger.info("Power state resumed, attempting to re-connect...");
+        await new Promise(resolve => setTimeout(resolve, 2000));
         const instance = currentInstance();
         try {
             const statusCode = await getResponse(instance, 8000);
             if (statusCode === 200) {
                 await reinitMainWindow();
             } else {
-                handleUnavailable(statusCode);
+                handleUnavailable(`WAKE - Network unavailable: ${statusCode}`);
             }
         } catch (error) {
-            logger.error(`WAKE - ${error}`);
-            logger.info("WAKE - Application will now restart...");
+            logger.error(`WAKE | fatal error encountered | ${error.message}`);
+            logger.warn("WAKE | application will now restart...");
             app.relaunch();
-            app.exit();
+            app.exit(0);
+        } finally {
+            sleepHandled = false;
+            resumeHandled = false;
         }
     }
 });
 
 powerMonitor.on('shutdown', () => {
-    logger.info("shutdown initiated, quitting...");
+    logger.info("Shutdown initiated, quitting...");
     if (isWebSocketOpen()) {
-        closeWebSocket("Shutting down");
+        closeWebSocket("machine is shutting down");
     }
     app.quit();
 });
@@ -82,7 +86,7 @@ export async function checkAutoStart() {
         autostartEnabled = await autoLauncher.isEnabled();
         return autostartEnabled;
     } catch (error) {
-        logger.error(`AUTOST - Check failed: ${error}`);
+        logger.error(`AUTOST | startup check failed | ${error}`);
         autostartEnabled = false;
         return false;
     }

@@ -8,6 +8,7 @@ const store = new Store({
     autoReconnect: true,
     detachedMode: false,
     disableHover: false,
+    disableFrame: true,
     stayOnTop: false,
     fullScreen: false,
     shortcutEnabled: true,

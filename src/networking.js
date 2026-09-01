@@ -34,7 +34,7 @@ export async function checkForUpdates() {
             }
         }
     } catch (error) {
-        logger.error(`UPDT - ${error}`);
+        logger.error(`UPDT | error getting updates | ${error}`);
     }
 }
 
@@ -79,7 +79,7 @@ export function closeWebSocket(source) {
         wsClosedResolve = resolve;
         wsClosedIntentional = true;
         wsConnection.close(4000);       
-        logger.info(`INSTAV - Websocket closed (${source})`);
+        logger.info(`CLSWSKT | websocket closed | ${source}`);
     });
 }
 
@@ -96,18 +96,18 @@ export async function initWebSocketHealth(instance) {
             await initWebSocketHealth(url);
             return;
         } else {
-            logger.error(`Authentication issue for ${url}`);
-            logger.warn("Application will now exit");
+            logger.error(`TKNAUTH | authentication issue with ${url}. Please sign in to your Home Assistant instance.`);
+            logger.warn("TKNAUTH | application will now exit...");
             if (isWebSocketOpen) {
-                closeWebSocket("token authentication issue - please sign in to Home Assistant");
+                closeWebSocket("websocket couldn't authenticate");
             }
             app.quit();
         }
     }
 
     if (accessToken.expires && accessToken.expires < Date.now()) {
-        logger.warn(`Access token is stale (${new Date(accessToken.expires).toLocaleString()}), refreshing...`);
-        handleUnavailable("Token expired");
+        logger.warn(`TKNAUTH | access token is stale (${new Date(accessToken.expires).toLocaleString()}), refreshing...`);
+        handleUnavailable("WEBSKT | token expired");
         return;
     }
 
@@ -136,9 +136,8 @@ export async function initWebSocketHealth(instance) {
                 );
 
                 authTimeout = setTimeout(() => {
-                    logger.error("Websocket auth timed out!");
                     reject(new Error("Websocket auth timed out!"));
-                    handleUnavailable();
+                    handleUnavailable("WEBSKT | websocket auth timed out!");
                 }, 8000);
             };
 
@@ -157,7 +156,7 @@ export async function initWebSocketHealth(instance) {
                             clearInterval(pingTimer);
                             heartbeatTimer = null;
                             pingTimer = null;
-                            handleUnavailable("Connection timeout - no activity");
+                            handleUnavailable("WEBSKT | connection timeout due to inactivity");
                         }
                     }, 15000);
 
@@ -180,7 +179,7 @@ export async function initWebSocketHealth(instance) {
                     heartbeatTimer = null;
                     pingTimer = null;
                     authTimeout = null;
-                    handleUnavailable("Authentication failed!");
+                    handleUnavailable("WEBSKT | authentication failed!");
                 }
             };
 
@@ -191,7 +190,7 @@ export async function initWebSocketHealth(instance) {
                 heartbeatTimer = null;
                 pingTimer = null;
                 authTimeout = null;
-                handleUnavailable(`General error ${error}`);
+                handleUnavailable(`WEBSKT | general error | ${error}`);
             };
 
             wsConnection.onclose = (event) => {
@@ -212,7 +211,7 @@ export async function initWebSocketHealth(instance) {
                     return; 
                 }
 
-                handleUnavailable(`Unexpected close (Code: ${event.code})`);
+                handleUnavailable(`WEBSKT | websocket closed unexpectedly | Code: ${event.code}`);
                 wsConnection = null;
             };
         } catch (error) {
@@ -221,7 +220,7 @@ export async function initWebSocketHealth(instance) {
             heartbeatTimer = null;
             pingTimer = null;
             authTimeout = null;
-            handleUnavailable(`Fatal: ${error}`);
+            handleUnavailable(`WEBSKT | fatal error encountered | ${error}`);
         }
     });
 }
@@ -232,9 +231,10 @@ export function handleUnavailable(reason) {
     }
     showError(true);
     if (wsConnection) {
-        closeWebSocket(reason);
+        closeWebSocket("instance became unavailable");
     }
-    if (reason === "Authentication failed!") {
+    logger.error(reason);
+    if (reason === "WEBSKT | authentication failed!") {
         return;
     }
     if (config.get("autoReconnect") === true) retryAvailabilityCheck();
@@ -250,7 +250,7 @@ async function retryAvailabilityCheck() {
         let retryCount = 0;
         const mainWindow = getMainWindow();
         if (wsConnection) {
-            closeWebSocket("retryAvailabilityCheck");
+            closeWebSocket("retrying availability");
         }
 
         while (retryCount <= WS_MAX_RETRIES) {
@@ -277,10 +277,10 @@ async function retryAvailabilityCheck() {
 }
 
 async function handleRetryAttempt(retryCount, mainWindow, errorMessage) {
-    logger.error(`WebSocket retry ${retryCount}/${WS_MAX_RETRIES} failed: ${errorMessage}`);
+    logger.error(`RETRY | webSocket retry ${retryCount}/${WS_MAX_RETRIES} failed | ${errorMessage}`);
 
     if (retryCount === WS_MAX_RETRIES) {
-        logger.error("RETRY - Cannot automatically connect to instance.");
+        logger.error("RETRY | cannot automatically connect to instance");
         mainWindow.webContents.send("retry-update", "Unable to connect to instance!");
     } else {
         mainWindow.webContents.send("retry-update", `Trying to reconnect ${retryCount} of ${WS_MAX_RETRIES}`);
