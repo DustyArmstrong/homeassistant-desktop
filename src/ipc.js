@@ -64,7 +64,7 @@ export async function getCurrentToken(maxRetries = 3, delayMs = 500) {
                 await new Promise(resolve => setTimeout(resolve, delayMs));
             }
         } catch (error) {
-            logger.error(`Could not fetch token from renderer: ${error}`);
+            logger.error(`TKNFET | could not fetch token from frontend | ${error}`);
             return null;
         }
     }
@@ -98,7 +98,7 @@ export async function waitForToken(maxWaitMs = 120000, pollIntervalMs = 1000) {
 
             await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
         } catch (error) {
-            logger.error(`Error polling for token: ${error}`);
+            logger.error(`TKNFET | error polling for frontend token | ${error}`);
             return null;
         }
     }
@@ -156,7 +156,7 @@ async function awaitTokenCreation(url) {
         logger.info(`Authentication detected, starting websocket for ${url}...`);
         await initWebSocketHealth(url);
     } else {
-        logger.error(`Authentication timed out for ${url}`);
+        logger.error(`TKNFET | authentication timed out for ${url}`);
         logger.warn("Application will now exit");
         app.quit();
     }

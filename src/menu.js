@@ -124,9 +124,9 @@ export function getMenu() {
                     await modAutoLaunch(stateTarget);
                     menuItem.checked = stateTarget;
                     app.relaunch();
-                    app.exit();
+                    app.exit(0);
                 } catch (error) {
-                    logger.error(`AUTOST - failed to toggle setting: ${error}`);
+                    logger.error(`AUTOST | failed to toggle autostart setting | ${error}`);
                     menuItem.checked = !stateTarget;
                 }
             },
@@ -238,7 +238,7 @@ export function getMenu() {
                             click: async () => {
                                 config.set("highDPIMode", !config.get("highDPIMode"));
                                 app.relaunch();
-                                app.exit();
+                                app.exit(0);
                             }
                         },
                         {
@@ -251,7 +251,7 @@ export function getMenu() {
                                 }
                                 config.set("forceScaling", !config.get("forceScaling"));
                                 app.relaunch();
-                                app.exit();
+                                app.exit(0);
                             }
                         },
                         {
@@ -291,9 +291,9 @@ export function getMenu() {
                                         try {
                                             await scaleAction();
                                             app.relaunch();
-                                            app.exit();
+                                            app.exit(0);
                                         } catch (error) {
-                                            logger.error("Could not set scale factor: ", error);
+                                            logger.error(`DISP | could not set scale factor | ${error}`);
                                         }
                                     });
                             }
@@ -325,7 +325,12 @@ export function getMenu() {
                     click: async () => {
                         config.set("disableFrame", !config.get("disableFrame"));
                         app.relaunch();
-                        app.exit();
+                        if (mainWindow && !mainWindow.isDestroyed()) {
+                            mainWindow.destroy();
+                        }
+                        setTimeout(() => {
+                            app.exit(0);
+                        }, 50);
                     }
                 }
             ]
@@ -397,7 +402,7 @@ export function getMenu() {
             label: "🔄 Restart Application",
             click: () => {
                 app.relaunch();
-                app.exit();
+                app.exit(0);
             },
         },
         {
@@ -440,9 +445,9 @@ export function getMenu() {
                         try {
                             await action();
                             app.relaunch();
-                            app.exit();
+                            app.exit(0);
                         } catch (error) {
-                            logger.error("Data reset failed: ", error);
+                            logger.error(`RES | could not reset application settings | ${error}`);
                         }
                     });
             },
@@ -454,7 +459,7 @@ export function getMenu() {
             label: "Quit",
             click: () => {
                 if (isWebSocketOpen()) {
-                    closeWebSocket("application quit");
+                    closeWebSocket("user application quit");
                 }
                 forceQuit = true;
                 app.quit();

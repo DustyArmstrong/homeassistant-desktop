@@ -36,9 +36,9 @@ Just download the latest version for your platform from the [release section](ht
 
 ## Notes & known issues
 
-- self-signed certificates have not been tested, but should probably work now with a migration back to the Electron native `net` module (this can access the default certificate stores e.g. on Windows)
-- support for Linux distros may vary, app tested on Debian-based flavors, Arch, Fedora (all primarily with X11) but detailed feedback is welcome
-- support for Wayland still seems a bit limited - the application will still run however a number of Electron's features aren't implemented yet (e.g. shortcuts, checkbox display)
+- self-signed certificates should now work with the transition to the native Electron `net` module, along with mTLS
+- support for Linux distros may vary, app tested on Debian-based flavors, Arch, Fedora (all primarily with X11 under Wayland) but detailed feedback is welcome
+- support for Wayland generally still seems a bit limited - the application will still run however a number of Electron's features aren't implemented (e.g. shortcuts, checkbox display)
 - if using "detached window" on Windows, instead of dragging, you have to resize it to move it
 
 ### Linux Install Notes
@@ -49,9 +49,33 @@ Per above, Wayland does not support - at least in any straightforward manner for
 
 This section will be updated to reflect any other solutions as needed. At this time, window positioning on Wayland is not something this project can effectively handle within its own scope. 
 
+#### Linux AppImage
+
+The AppImage has been the most stable during testing. Despite this (and despite much effort to try and resolve it), at times the AppImage may not run successfully. This largely depends on the particulars of your environment, along with the version of `FUSE` you have available through your package manager. By default and under the default runtime behavior, the AppImage uses `FUSE` to mount the filesystem. This creates a directory in `/tmp/` with an assigned string e.g. `/tmp/.mount_Home.ABc123/`. 
+
+By far the most common error seen in production is: 
+
+`MAINWIN | (1): Error: ERR_FAILED (-2) loading 'file:///tmp/.mount_Home.ABC123/resources/app.asar/src/../web/index.html'`
+
+This occurs because the `/tmp` directory spawned by `FUSE` is not picked up correctly, likely due to insufficient cleanup or linking by the OS, race conditions in either `FUSE` or the AppImage causing a mismatch, or some other related problem. Various methods have been attempted to resolve this, with mixed success. The best available options are: 
+
+1) Extract the AppImage before running (AppImage renamed in this example)
+
+```
+./homeassistantdesktop.AppImage --appimage-extract
+cd squashfs-root/
+./homeassistant-desktop
+```
+
+2) Run and skip `FUSE` mounts
+
+`./homeassistantdesktop.AppImage --appimage-extract-and-run`
+
+The most 
+
 #### Linux .desktop file
 
-A sample working desktop file is provided below. Electron applications seem to play better with X11, but please try your luck with Wayland as well - obviously people mainlining Linux as their daily driver (more power to you) will understand their own distro better than I can (even if I use Linux daily too), but for those that struggle with this, this is the best I can come up with for now. 
+A sample working desktop file is provided below. Electron applications seem to play better with X11, but please try your luck with Wayland as well - obviously people mainlining Linux as their daily driver (more power to you) will understand their own distro better than I can (even if I use Linux daily too), but for those that struggle with this, this is the best I can come up with for now. Necessity for this will depend on your distro, as they all have different behavior.
 
 In the below example, the AppImage and PNG have been renamed. This file is named `org.homeassistant.desktop` and should be placed in `~/.local/share/applications`. 
 
@@ -83,15 +107,11 @@ The PNG can be obtained by first extracting the AppImage (`./appimage.AppImage -
 
 The `.deb`, `.rpm` and `.pacman` are provided on a "best efforts" basis. I've done as much as I feel I can currently to get this working well, or at least reasonably well, on Linux. I have tested on various flavors (Arch Linux, Fedora, Ubuntu) with mixed success, but overall the `AppImage` appears to run best. Some (like `pacman`) are still in beta with the Electron team, I did not have much success with it - while I do everything I can to provide a decent experience on Linux, much of the build components are down to Electron's design decisions and implementations. 
 
-#### Linux Errors
-
-Linux versions of the app are particularly prone to `ERR 2` (file not found) when trying to load `index.html`. This doesn't happen all the time (which would be easier to diagnose!), and may be due to namespace sandboxing, file/URL path loading mechanisms, `app.asar` load abnormalities (particularly on crashes, check `ls -lah /tmp`), or just the distro's own choice of implementations. I have tried a number of different file load mechanisms, all of which do roughly the same thing (usually loads fine, sometimes doesn't). The current mechanism to load the file works for the most part on distros I have tried (Arch Linux, Fedora, Ubuntu - using AppImage). As I can't test on every possible combination of distro, I've just done what seems to work with most. Will continue working on Linux stability for future releases.  
-
 ## Troubleshooting
 
 ### Visual issues
 
-If you experience visual issues with your Home Assistant dashboards when using Home Assistant Desktop, in particular if these are not consistent with your external web browser, this is most often caused by cached content. A function is present in the application to remove several layers of cache - in most cases the basic (soft) clear should suffice. You can find this and other options under the **Clear Application Data** menu. Should this fail, a hard clear (includes session storage) is the next best option. 
+If you experience visual issues with your Home Assistant dashboards when using Home Assistant Desktop, in particular if these are not consistent with your external web browser, this is most often caused by cached content. A function is present in the application to remove several layers of cache - in most cases the basic (soft) clear should suffice. You can find this and other options under the **Clear Application Data** menu. Should this fail, a hard clear (includes session storage) is the next best option. The application now features an 'F5' refresh option, which can be found in the menu, and performs a refresh ignoring cache. 
 
 If everything fails, you can manually clear the cache by removing all the content from:
 

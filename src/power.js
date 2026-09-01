@@ -15,7 +15,7 @@ powerMonitor.on('suspend', () => {
     if (!sleepHandled) {
         logger.info("Home Assistant going to sleep.");
         if (isWebSocketOpen()) {
-            closeWebSocket("Suspending machine");
+            closeWebSocket("machine going to sleep");
         }
         showSleep(true);
         sleepHandled = true;
@@ -36,10 +36,10 @@ powerMonitor.on('resume', async () => {
                 handleUnavailable(`WAKE - Network unavailable: ${statusCode}`);
             }
         } catch (error) {
-            logger.error(`WAKE - Fatal error: ${error.message}`);
-            logger.info("WAKE - Application will now restart...");
+            logger.error(`WAKE | fatal error encountered | ${error.message}`);
+            logger.warn("WAKE | application will now restart...");
             app.relaunch();
-            app.exit();
+            app.exit(0);
         } finally {
             sleepHandled = false;
             resumeHandled = false;
@@ -48,9 +48,9 @@ powerMonitor.on('resume', async () => {
 });
 
 powerMonitor.on('shutdown', () => {
-    logger.info("shutdown initiated, quitting...");
+    logger.info("Shutdown initiated, quitting...");
     if (isWebSocketOpen()) {
-        closeWebSocket("Shutting down");
+        closeWebSocket("machine is shutting down");
     }
     app.quit();
 });
@@ -86,7 +86,7 @@ export async function checkAutoStart() {
         autostartEnabled = await autoLauncher.isEnabled();
         return autostartEnabled;
     } catch (error) {
-        logger.error(`AUTOST - Check failed: ${error}`);
+        logger.error(`AUTOST | startup check failed | ${error}`);
         autostartEnabled = false;
         return false;
     }
