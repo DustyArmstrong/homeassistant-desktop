@@ -3,17 +3,19 @@ import logger from "electron-log";
 import Positioner from "electron-traywindow-positioner";
 import config from "../config.js";
 import { currentInstance } from './instance.js';
-import { getMainWindow, showWindow, createMainWindow, setWindowFocusTimer, toggleFullScreen } from './window.js';
+import { getMainWindow, showWindow, createMainWindow, toggleFullScreen } from './window.js';
 import { registerKeyboardShortcut, unregisterKeyboardShortcut } from "./shortcuts.js";
 import { checkForUpdates, closeWebSocket, isWebSocketOpen } from "./networking.js";
 import { getAutoStartStatus, modAutoLaunch } from "./power.js";
 
-let tray;
+let tray = undefined;
 let forceQuit = false;
+let debugClick = 0; // Track clicks - DEBUG - REMOVE LATER
 
 const __dirname = import.meta.dirname;
 const indexFile = `file://${__dirname}/../web/index.html`;
 
+//HOVER TO SHOW REMOVED COMPLETELY - IT WAS CAUSING A NUMBER OF ISSUES AND ISN'T THAT USEFUL (unless someone says otherwise...)
 export function getMenu() {
     const mainWindow = getMainWindow();
     const instancesMenu = [
@@ -90,16 +92,6 @@ export function getMenu() {
         ...instancesMenu,
         {
             type: "separator",
-        },
-        {
-            label: "Hover to Show",
-            visible: process.platform !== "linux" && !config.get("detachedMode"),
-            enabled: !config.get("detachedMode"),
-            type: "checkbox",
-            checked: !config.get("disableHover"),
-            click: () => {
-                config.set("disableHover", !config.get("disableHover"));
-            },
         },
         {
             label: "Stay on Top",
@@ -323,14 +315,12 @@ export function getMenu() {
                     type: "checkbox",
                     checked: config.get("disableFrame"),
                     click: async () => {
+                        logger.debug(`frame toggle: current=${config.get("disableFrame")}`); // DEBUG LOG - REMOVE LATER
                         config.set("disableFrame", !config.get("disableFrame"));
-                        app.relaunch();
-                        if (mainWindow && !mainWindow.isDestroyed()) {
-                            mainWindow.destroy();
-                        }
-                        setTimeout(() => {
-                            app.exit(0);
-                        }, 50);
+                        logger.debug(`frame toggle: now set to ${config.get("disableFrame")}`); // DEBUG LOG - REMOVE LATER
+                        app.relaunch({ args: process.argv.slice(1) }); // Use documented arguments from Electron themselves
+                        logger.debug("frame toggle: relaunch scheduled, exiting app"); // DEBUG LOG - REMOVE LATER
+                        app.exit(0);
                     }
                 }
             ]
@@ -512,75 +502,75 @@ export function changePosition() {
 }
 
 export function createTray() {
-    if (tray instanceof Tray) {
+
+    // FIXED: destroyed tray can still pass an instance of Tray, shall we check isDestroyed() instead - yeah!
+    if (tray && !tray.isDestroyed()) {
         return;
     }
 
     logger.info("Initialized Tray menu");
     const iconName = config.get("userTrayIcon");
-    tray = new Tray(
-        ["win32", "linux"].includes(process.platform) ? `${__dirname}/assets/${iconName}` : `${__dirname}/assets/${iconName}`
-    );
+    tray = new Tray(`${__dirname}/assets/${iconName}`); // legacy code was checking two distinct paths, bit of housekeeping
 
     tray.on("click", () => {
+        // DEBUG - REMOVE LATER
+        logger.debug(`tray click #${++debugClick}`);
         const mainWindow = getMainWindow();
-        if (!mainWindow) {
+        // DEBUG - REMOVE LATER
+        logger.debug(`tray click: win=${!!mainWindow} destroyed=${mainWindow?.isDestroyed()} visible=${mainWindow?.isVisible()} minimized=${mainWindow?.isMinimized()}`);
+
+
+        // FIXED: add guards against a destroyed window, possible race and uncaught errors
+        // Could explain the click doing nothing
+        if (!mainWindow || mainWindow.isDestroyed()) {
             return;
         }
-        if (mainWindow.isVisible()) {
-            mainWindow.hide();
 
-            if (process.platform === "darwin") {
-                app.dock.hide();
+        try {
+            // FIXED: Windows always returns true for minimized windows,
+            // check for minimized window guard here first
+            if (mainWindow.isVisible() && !mainWindow.isMinimized()) {
+                mainWindow.hide();
+                // DEBUG - REMOVE LATER
+                logger.debug(`tray click post-hide: visible=${mainWindow.isVisible()}`);
+
+                if (process.platform === "darwin") {
+                    app.dock.hide();
+                }
+            } else {
+                showWindow();
             }
-        } else {
-            showWindow();
+        } catch (error) {
+            logger.error(`TRAY | click handler error | ${error}`);
         }
     });
 
     tray.on("right-click", () => {
         const mainWindow = getMainWindow();
-        if (!mainWindow) {
-            return;
-        }
-        if (!config.get("detachedMode")) {
-            mainWindow.hide();
-        }
+        // DEBUG - REMOVE LATER
+        logger.debug(`tray right-click: win=${!!mainWindow} destroyed=${mainWindow?.isDestroyed()}`);
 
-        tray.popUpContextMenu(getMenu());
-    });
-
-    let timer = undefined;
-
-    tray.on("mouse-move", () => {
-        const mainWindow = getMainWindow();
-        if (!mainWindow) {
-            return;
-        }
-        if (config.get("detachedMode") || mainWindow.isAlwaysOnTop() || config.get("disableHover")) {
+        if (!mainWindow || mainWindow.isDestroyed()) {
             return;
         }
 
-        if (!mainWindow.isVisible()) {
-            showWindow();
-        }
-
-        if (timer) {
-            clearTimeout(timer);
-        }
-
-        timer = setTimeout(() => {
-            const mousePos = screen.getCursorScreenPoint();
-            const trayBounds = tray.getBounds();
-
-            if (
-                !(mousePos.x >= trayBounds.x && mousePos.x <= trayBounds.x + trayBounds.width) ||
-                !(mousePos.y >= trayBounds.y && mousePos.y <= trayBounds.y + trayBounds.height)
-            ) {
-                setWindowFocusTimer();
+        try {
+            if (!config.get("detachedMode")) {
+                mainWindow.hide();
             }
-        }, 100);
+            tray.popUpContextMenu(getMenu());
+        } catch (error) {
+            logger.error(`TRAY | tray right-click handler error | ${error}`);
+        }
     });
+}
+
+// Destroy the tray when making changes to avoid doubling up on trays
+export function destroyTray() {
+    if (tray && !tray.isDestroyed()) {
+        tray.destroy();
+    }
+    tray = undefined;
 }
 
 function changeIcon(iconName) {

@@ -1,4 +1,4 @@
-import { shell, screen, BrowserWindow } from "electron";
+import { shell, BrowserWindow } from "electron";
 import { join } from "node:path";
 import logger from "electron-log";
 import config from "../config.js";
@@ -9,15 +9,16 @@ import { showError } from "./display.js";
 import { currentInstance } from "./instance.js";
 
 let initialized = false;
-let resizeEvent = false;
 let winIsReloading = false;
 let mainWindowLoaded = false;
+let isShowing = false; //New guard reporting for duty (we are short staffed)
 let mainWindow;
 
 const __dirname = import.meta.dirname;
 const indexFile = `file://${__dirname}/../web/index.html`;
 
 export async function createMainWindow(show = false) {
+	logger.debug(`createMainWindow: disableFrame=${config.get("disableFrame")}`);
 	logger.info("Loading main window...");
 	mainWindow = new BrowserWindow({
 		width: 420,
@@ -128,17 +129,6 @@ export async function createMainWindow(show = false) {
 			return e;
 		}
 
-		if (!config.get("disableHover") || resizeEvent) {
-			config.set("disableHover", true);
-			resizeEvent = e;
-			setTimeout(() => {
-				if (resizeEvent === e) {
-					config.set("disableHover", false);
-					resizeEvent = false;
-				}
-			}, 600);
-		}
-
 		if (config.get("detachedMode")) {
 			config.set("windowSizeDetached", mainWindow.getSize());
 		} else {
@@ -203,36 +193,65 @@ export async function reinitMainWindow() {
 }
 
 export function showWindow() {
-	if (!config.get("detachedMode")) {
-		changePosition();
-	}
+    // FIXED: Windows has issues with windows (ha!) dereferencing, check isDestroyed()
+    if (!mainWindow || mainWindow.isDestroyed()) {
+        logger.error("SHWIN | Attempted to show window, but no window was available");
+        return;
+    }
+	//Employ the new guard - he's happy, he has a family to feed
+    if (isShowing) {
+        return;
+    }
+    isShowing = true;
 
-	if (!mainWindow.isVisible()) {
-		mainWindow.setVisibleOnAllWorkspaces(true);
-		mainWindow.show();
-		mainWindow.focus();
-		mainWindow.setVisibleOnAllWorkspaces(false);
-		mainWindow.setSkipTaskbar(!config.get("detachedMode"));
-	}
-}
+    // DEBUG - REMOVE LATER
+    logger.debug(`showWindow: detached=${config.get("detachedMode")} visible=${mainWindow.isVisible()} minimized=${mainWindow.isMinimized()}`);
 
-export function setWindowFocusTimer() {
-	setTimeout(() => {
-		const mousePos = screen.getCursorScreenPoint();
-		const windowPosition = mainWindow.getPosition();
-		const windowSize = mainWindow.getSize();
+    if (!config.get("detachedMode")) {
+        changePosition();
+    }
 
-		if (
-			!resizeEvent &&
-			(!(mousePos.x >= windowPosition[0] && mousePos.x <= windowPosition[0] + windowSize[0]) ||
-				!(mousePos.y >= windowPosition[1] && mousePos.y <= windowPosition[1] + windowSize[1]))
-		) {
-			mainWindow.hide();
-		} else {
-			setWindowFocusTimer();
-		}
-	}, 110);
-}
+    if (mainWindow.isMinimized()) {
+        mainWindow.restore();
+    }
+
+    if (process.platform === "darwin") {
+        mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+    }
+
+    setTimeout(() => {
+        try {
+            // FIXED: add additional checks - events fire very fast on the whole acrsoss the project - hit the double even triple tap to avoid missing it
+			// If we don't do this it might be firing so quickly that the window doesn't exist at the time it's initially checked
+            if (!mainWindow || mainWindow.isDestroyed()) {
+                return;
+            }
+
+            mainWindow.show();
+
+            if (process.platform === "win32") {
+				// FIXED: try to guard against Windows foreground locks - "visible" but unfocused
+				// Not all OS were created equally, try to do one for each
+                mainWindow.focus();
+            } else if (process.platform === "darwin") {
+                mainWindow.focus();
+                mainWindow.setVisibleOnAllWorkspaces(false);
+            } else {
+                mainWindow.setFocusable(true);
+                mainWindow.focus();
+            }
+
+            mainWindow.setSkipTaskbar(!config.get("detachedMode"));
+
+            // DEBUG - REMOVE LATER
+            logger.debug(`showWindow done: visible=${mainWindow.isVisible()} focused=${mainWindow.isFocused()}`);
+        } catch (error) {
+            logger.error(`SHWIN | general error | ${error.message}`);
+        } finally {
+            isShowing = false;
+        }
+    }, 16); // Add more time delays (tiny)
+}			// Isn't it a bit like playing a Commodore 64 game on modern hardware and you end up running it at 10 billion FPS because game speed was tied to CPU clock
 
 export function toggleFullScreen(mode = !mainWindow.isFullScreen()) {
 	config.set("fullScreen", mode);

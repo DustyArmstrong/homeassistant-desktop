@@ -10,6 +10,16 @@ import { currentInstance } from "./src/instance.js";
 import { createMainWindow, toggleFullScreen, getMainWindow } from "./src/window.js";
 import { checkAutoStart, setResumeHandledStatus, setSleepHandledStatus } from "./src/power.js";
 
+// ADD PROCESS LOGGING TO TRY AND CATCH MORE SERIOUS APPLICATION ERRORS AS THEY COULD BE IMPORTANT
+// Note: this *can* create some 'silent' failures - always check the main log
+process.on("uncaughtException", (err) => {
+    logger.error(`uncaughtException: ${err.stack}`);
+});
+
+process.on("unhandledRejection", (reason) => {
+    logger.error(`unhandledRejection: ${reason}`);
+});
+
 if (config.get("highDPIMode")) {
 	app.commandLine.appendSwitch('high-dpi-support', 'true');
 }
@@ -71,10 +81,8 @@ app.whenReady().then(async () => {
 		});
 	}
 
-	if (!config.has("currentInstance")) {
-		config.set("disableHover", true);
-	}
-
+	config.set("disableHover", true); // Set this every time until a later version - hover has been removed, disable it for safety
+	
 	if (!config.has("autoUpdate")) {
 		config.set("autoUpdate", true);
 	}
