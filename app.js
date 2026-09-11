@@ -26,12 +26,6 @@ if (config.get("forceScaling")) {
 	app.commandLine.appendSwitch('force-device-scaling-factor', config.get("scaleFactor"));
 }
 
-const isFrameless = config.get("disableFrame") && process.platform !== "darwin";
-
-if (isFrameless) {
-  app.disableHardwareAcceleration();
-}
-
 logger.errorHandler.startCatching();
 logger.info(`${app.name} started`);
 logger.info(`Platform: ${process.platform} ${process.arch}`);
@@ -70,9 +64,7 @@ app.whenReady().then(async () => {
 	await checkAutoStart();
 	setSleepHandledStatus(false);
 	setResumeHandledStatus(false);
-	if (!app.isHardwareAccelerationEnabled()) {
-		logger.info("Hardware acceleration disabled");
-	}
+
 	await createMainWindow(!config.has("currentInstance"));
 	await new Promise(resolve => setTimeout(resolve, 200));
 
