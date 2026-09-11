@@ -11,7 +11,7 @@ import { currentInstance } from "./instance.js";
 let initialized = false;
 let winIsReloading = false;
 let mainWindowLoaded = false;
-let isShowing = false; //New guard reporting for duty (we are short staffed)
+let isShowing = false;
 let mainWindow;
 
 const __dirname = import.meta.dirname;
@@ -193,19 +193,15 @@ export async function reinitMainWindow() {
 }
 
 export function showWindow() {
-    // FIXED: Windows has issues with windows (ha!) dereferencing, check isDestroyed()
     if (!mainWindow || mainWindow.isDestroyed()) {
         logger.error("SHWIN | Attempted to show window, but no window was available");
         return;
     }
-	//Employ the new guard - he's happy, he has a family to feed
     if (isShowing) {
         return;
     }
     isShowing = true;
 
-    // DEBUG - REMOVE LATER
-    logger.debug(`showWindow: detached=${config.get("detachedMode")} visible=${mainWindow.isVisible()} minimized=${mainWindow.isMinimized()}`);
 
     if (!config.get("detachedMode")) {
         changePosition();
@@ -221,8 +217,6 @@ export function showWindow() {
 
     setTimeout(() => {
         try {
-            // FIXED: add additional checks - events fire very fast on the whole acrsoss the project - hit the double even triple tap to avoid missing it
-			// If we don't do this it might be firing so quickly that the window doesn't exist at the time it's initially checked
             if (!mainWindow || mainWindow.isDestroyed()) {
                 return;
             }
@@ -230,8 +224,6 @@ export function showWindow() {
             mainWindow.show();
 
             if (process.platform === "win32") {
-				// FIXED: try to guard against Windows foreground locks - "visible" but unfocused
-				// Not all OS were created equally, try to do one for each
                 mainWindow.focus();
             } else if (process.platform === "darwin") {
                 mainWindow.focus();
@@ -243,15 +235,13 @@ export function showWindow() {
 
             mainWindow.setSkipTaskbar(!config.get("detachedMode"));
 
-            // DEBUG - REMOVE LATER
-            logger.debug(`showWindow done: visible=${mainWindow.isVisible()} focused=${mainWindow.isFocused()}`);
         } catch (error) {
             logger.error(`SHWIN | general error | ${error.message}`);
         } finally {
             isShowing = false;
         }
-    }, 16); // Add more time delays (tiny)
-}			// Isn't it a bit like playing a Commodore 64 game on modern hardware and you end up running it at 10 billion FPS because game speed was tied to CPU clock
+    }, 16); 
+}			
 
 export function toggleFullScreen(mode = !mainWindow.isFullScreen()) {
 	config.set("fullScreen", mode);

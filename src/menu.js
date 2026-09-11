@@ -10,12 +10,11 @@ import { getAutoStartStatus, modAutoLaunch } from "./power.js";
 
 let tray = undefined;
 let forceQuit = false;
-let debugClick = 0; // Track clicks - DEBUG - REMOVE LATER
 
 const __dirname = import.meta.dirname;
 const indexFile = `file://${__dirname}/../web/index.html`;
 
-//HOVER TO SHOW REMOVED COMPLETELY - IT WAS CAUSING A NUMBER OF ISSUES AND ISN'T THAT USEFUL (unless someone says otherwise...)
+
 export function getMenu() {
     const mainWindow = getMainWindow();
     const instancesMenu = [
@@ -315,11 +314,8 @@ export function getMenu() {
                     type: "checkbox",
                     checked: config.get("disableFrame"),
                     click: async () => {
-                        logger.debug(`frame toggle: current=${config.get("disableFrame")}`); // DEBUG LOG - REMOVE LATER
                         config.set("disableFrame", !config.get("disableFrame"));
-                        logger.debug(`frame toggle: now set to ${config.get("disableFrame")}`); // DEBUG LOG - REMOVE LATER
-                        app.relaunch({ args: process.argv.slice(1) }); // Use documented arguments from Electron themselves
-                        logger.debug("frame toggle: relaunch scheduled, exiting app"); // DEBUG LOG - REMOVE LATER
+                        app.relaunch({ args: process.argv.slice(1) });
                         app.exit(0);
                     }
                 }
@@ -502,37 +498,24 @@ export function changePosition() {
 }
 
 export function createTray() {
-
-    // FIXED: destroyed tray can still pass an instance of Tray, shall we check isDestroyed() instead - yeah!
     if (tray && !tray.isDestroyed()) {
         return;
     }
 
     logger.info("Initialized Tray menu");
     const iconName = config.get("userTrayIcon");
-    tray = new Tray(`${__dirname}/assets/${iconName}`); // legacy code was checking two distinct paths, bit of housekeeping
+    tray = new Tray(`${__dirname}/assets/${iconName}`);
 
     tray.on("click", () => {
-        // DEBUG - REMOVE LATER
-        logger.debug(`tray click #${++debugClick}`);
         const mainWindow = getMainWindow();
-        // DEBUG - REMOVE LATER
-        logger.debug(`tray click: win=${!!mainWindow} destroyed=${mainWindow?.isDestroyed()} visible=${mainWindow?.isVisible()} minimized=${mainWindow?.isMinimized()}`);
 
-
-        // FIXED: add guards against a destroyed window, possible race and uncaught errors
-        // Could explain the click doing nothing
         if (!mainWindow || mainWindow.isDestroyed()) {
             return;
         }
 
         try {
-            // FIXED: Windows always returns true for minimized windows,
-            // check for minimized window guard here first
             if (mainWindow.isVisible() && !mainWindow.isMinimized()) {
                 mainWindow.hide();
-                // DEBUG - REMOVE LATER
-                logger.debug(`tray click post-hide: visible=${mainWindow.isVisible()}`);
 
                 if (process.platform === "darwin") {
                     app.dock.hide();
@@ -547,8 +530,6 @@ export function createTray() {
 
     tray.on("right-click", () => {
         const mainWindow = getMainWindow();
-        // DEBUG - REMOVE LATER
-        logger.debug(`tray right-click: win=${!!mainWindow} destroyed=${mainWindow?.isDestroyed()}`);
 
         if (!mainWindow || mainWindow.isDestroyed()) {
             return;
@@ -565,7 +546,6 @@ export function createTray() {
     });
 }
 
-// Destroy the tray when making changes to avoid doubling up on trays
 export function destroyTray() {
     if (tray && !tray.isDestroyed()) {
         tray.destroy();

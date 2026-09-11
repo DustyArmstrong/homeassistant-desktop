@@ -1,0 +1,3 @@
+[install]
+# 14 days
+minimumReleaseAge = 1209600

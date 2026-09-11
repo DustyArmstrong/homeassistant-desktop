@@ -10,8 +10,6 @@ import { currentInstance } from "./src/instance.js";
 import { createMainWindow, toggleFullScreen, getMainWindow } from "./src/window.js";
 import { checkAutoStart, setResumeHandledStatus, setSleepHandledStatus } from "./src/power.js";
 
-// ADD PROCESS LOGGING TO TRY AND CATCH MORE SERIOUS APPLICATION ERRORS AS THEY COULD BE IMPORTANT
-// Note: this *can* create some 'silent' failures - always check the main log
 process.on("uncaughtException", (err) => {
     logger.error(`uncaughtException: ${err.stack}`);
 });
@@ -28,6 +26,11 @@ if (config.get("forceScaling")) {
 	app.commandLine.appendSwitch('force-device-scaling-factor', config.get("scaleFactor"));
 }
 
+const isFrameless = config.get("disableFrame") && process.platform !== "darwin";
+
+if (isFrameless) {
+  app.disableHardwareAcceleration();
+}
 
 logger.errorHandler.startCatching();
 logger.info(`${app.name} started`);
@@ -67,7 +70,9 @@ app.whenReady().then(async () => {
 	await checkAutoStart();
 	setSleepHandledStatus(false);
 	setResumeHandledStatus(false);
-
+	if (!app.isHardwareAccelerationEnabled()) {
+		logger.info("Hardware acceleration disabled");
+	}
 	await createMainWindow(!config.has("currentInstance"));
 	await new Promise(resolve => setTimeout(resolve, 200));
 
