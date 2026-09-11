@@ -1,4 +1,4 @@
-import { shell, BrowserWindow } from "electron";
+import { shell, BrowserWindow, screen } from "electron";
 import { join } from "node:path";
 import logger from "electron-log";
 import config from "../config.js";
@@ -61,6 +61,13 @@ export async function createMainWindow(show = false) {
 		}
 	};
 	await tryLoadURL();
+
+	mainWindow.on("ready-to-show", () => {
+		const bounds = mainWindow.getBounds();
+		logger.info("Window bounds:", bounds);
+		const displays = screen.getAllDisplays();
+		logger.info("Available displays:", displays.map(d => d.bounds));
+	});
 
 	mainWindow.webContents.on("did-fail-load", async (e, errorCode, validatedURL) => {
 		logger.error(`WEBCONT | ${validatedURL} | ${errorCode}`);
