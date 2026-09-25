@@ -5,10 +5,10 @@ import config from "../config.js";
 import { forceQuitStatus } from "./menu.js";
 import { isWebSocketOpen, initWebSocketHealth, closeWebSocket } from "./networking.js";
 import { changePosition, createTray } from "./menu.js";
-import { showError } from "./display.js";
+import { showError,  ensureWinVisible, initWindowBounds, clampWinSize, validateBounds  } from "./display.js";
 import { currentInstance } from "./instance.js";
 
-let initialized = false;
+//let initialized = false; // removed for testing
 let winIsReloading = false;
 let mainWindowLoaded = false;
 let isShowing = false;
@@ -20,6 +20,12 @@ const indexFile = `file://${__dirname}/../web/index.html`;
 export async function createMainWindow(show = false) {
 	logger.debug(`createMainWindow: disableFrame=${config.get("disableFrame")}`);
 	logger.info("Loading main window...");
+	const savedSize = config.get("windowSize");
+	const savedDetachedSize = config.get("windowSizeDetached");
+	const detachedMode = config.get("detachedMode");
+	const initialWidth = detachedMode && savedDetachedSize ? savedDetachedSize[0] : (savedSize ? savedSize[0] : 420);
+	const initialHeight = detachedMode && savedDetachedSize ? savedDetachedSize[1] : (savedSize ? savedSize[1] : 460);
+
 	mainWindow = new BrowserWindow({
 		width: 420,
 		height: 460,
@@ -37,7 +43,9 @@ export async function createMainWindow(show = false) {
 	});
 
 	//mainWindow.webContents.openDevTools();
+	initWindowBounds(mainWindow, initialWidth, initialHeight);
 	mainWindowLoaded = false;
+	let readyToShowHandled = false;
 	const tryLoadURL = async (attempt = 1, maxAttempts = 5) => {
 		try {
 			logger.info("Loading index...", attempt);
@@ -62,15 +70,32 @@ export async function createMainWindow(show = false) {
 	};
 	await tryLoadURL();
 
-	mainWindow.on("ready-to-show", () => {
-		const bounds = mainWindow.getBounds();
-		logger.info("Window bounds:", bounds);
-		const displays = screen.getAllDisplays();
-		logger.info("Available displays:", displays.map(d => d.bounds));
-	});
+    mainWindow.on("ready-to-show", () => {
+        if (readyToShowHandled) {
+            logger.debug("ready-to-show already handled, skipping duplicate event");
+            return;
+        }
+        readyToShowHandled = true;
+        
+        setTimeout(() => {
+            const bounds = mainWindow.getBounds();
+            logger.info(`Ready-to-show bounds: x=${bounds.x}, y=${bounds.y}, w=${bounds.width}, h=${bounds.height}`);
+            
+            const displays = screen.getAllDisplays();
+            logger.info("Available displays:", displays.map(disp => ({
+                id: disp.id,
+                bounds: disp.bounds,
+                workArea: disp.workArea,
+                scaleFactor: disp.scaleFactor
+            })));
 
-	mainWindow.webContents.on("did-fail-load", async (e, errorCode, validatedURL) => {
-		logger.error(`WEBCONT | ${validatedURL} | ${errorCode}`);
+            ensureWinVisible(mainWindow);
+
+        }, 10);
+    });
+
+	mainWindow.webContents.on("did-fail-load", async (e, errorCode, validatedURL, errorCodeDescription) => {
+		logger.error(`WEBCONT | URL: ${validatedURL} | Code: ${errorCode} | Desc: ${errorCodeDescription}`);
 		if (!mainWindowLoaded || winIsReloading) {
 			logger.warn("Window hasn't loaded yet or is already reloading...");
 			return;
@@ -87,7 +112,7 @@ export async function createMainWindow(show = false) {
 	});
 
 	mainWindow.webContents.on("render-process-gone", (event, detailed) => {
-		logger.error("RENDR - " + detailed.reason);
+		logger.error("RENDR | " + detailed.reason);
 		const RELOAD_REASONS = new Set(["crashed", "abnormal-exit", "oom", "launch-failed"]);
 		if (RELOAD_REASONS.has(detailed.reason)) {
 			try {
@@ -114,26 +139,43 @@ export async function createMainWindow(show = false) {
 	});
 
 	if (config.get("detachedMode")) {
-		if (config.has("windowPosition")) {
-			mainWindow.setSize(...config.get("windowSizeDetached"));
+		if (config.has("windowPosition") && config.has("windowSizeDetached")) {
+			const [xPosition, yPosition] = config.get("windowPosition");
+			const [width, height] = config.get("windowSizeDetached");
+
+			const clamped = clampWinSize(mainWindow);
+
+			mainWindow.setBounds({x: xPosition, y: yPosition, width, height});
+			logger.info(`Restored detached bounds: x=${xPosition}, y=${yPosition}, w=${width}, h=${height}${clamped.clamped ? " (CLAMPED)" : ""}`);
 		} else {
 			config.set("windowPosition", mainWindow.getPosition());
-		}
-
-		if (config.has("windowSizeDetached")) {
-			mainWindow.setPosition(...config.get("windowPosition"));
-		} else {
 			config.set("windowSizeDetached", mainWindow.getSize());
+			logger.info("Window initialized with detached mode defaults");
 		}
 	} else if (config.has("windowSize")) {
-		mainWindow.setSize(...config.get("windowSize"));
+		const [width, height] = config.get("windowSize");
+		await new Promise(resolve => setTimeout(resolve, 50));
+		const clamped = clampWinSize(mainWindow);
+		mainWindow.setSize(width, height);
+		await new Promise(resolve => setTimeout(resolve, 50));
+		const actualSize = mainWindow.getSize();
+		logger.info(`Restored window size: ${width}x${height}, actual: ${actualSize[0]}x${actualSize[1]}${clamped.clamped ? " (CLAMPED)" : ""}`);
 	} else {
 		config.set("windowSize", mainWindow.getSize());
+		logger.info("Window initialized with default size");
 	}
 
-	mainWindow.on("resize", (e) => {
+	ensureWinVisible(mainWindow);
+
+	mainWindow.on("resize", (event) => {
 		if (mainWindow.isFullScreen()) {
-			return e;
+			return event;
+		}
+
+		if(!validateBounds(mainWindow)) {
+			const defaultSize = config.get("windowSize") || [420, 460];
+			mainWindow.setSize(defaultSize[0], defaultSize[1]);
+			logger.error("WINIT | Corrupt window size reset to defaults");
 		}
 
 		if (config.get("detachedMode")) {
@@ -153,10 +195,10 @@ export async function createMainWindow(show = false) {
 		}
 	});
 
-	mainWindow.on("close", (e) => {
+	mainWindow.on("close", (event) => {
 		if (!forceQuitStatus()) {
 			mainWindow.hide();
-			e.preventDefault();
+			event.preventDefault();
 		}
 	});
 
@@ -168,13 +210,9 @@ export async function createMainWindow(show = false) {
 
 	mainWindow.setAlwaysOnTop(!!config.get("stayOnTop"));
 
-	if (initialized && (mainWindow.isAlwaysOnTop() || show)) {
-		showWindow();
-	}
-
 	toggleFullScreen(!!config.get("fullScreen"));
 
-	initialized = true;
+	//initialized = true; // removed for testing
 	createTray();
 	return mainWindow;
 }
@@ -205,6 +243,7 @@ export function showWindow() {
         return;
     }
     if (isShowing) {
+		logger.debug("SHWIN | Window is already being shown, skipping duplicate call");
         return;
     }
     isShowing = true;
@@ -222,33 +261,39 @@ export function showWindow() {
         mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
     }
 
-    setTimeout(() => {
-        try {
-            if (!mainWindow || mainWindow.isDestroyed()) {
-                return;
-            }
 
-            mainWindow.show();
-
-            if (process.platform === "win32") {
-                mainWindow.focus();
-            } else if (process.platform === "darwin") {
-                mainWindow.focus();
-                mainWindow.setVisibleOnAllWorkspaces(false);
-            } else {
-                mainWindow.setFocusable(true);
-                mainWindow.focus();
-            }
-
-            mainWindow.setSkipTaskbar(!config.get("detachedMode"));
-
-        } catch (error) {
-            logger.error(`SHWIN | general error | ${error.message}`);
-        } finally {
-            isShowing = false;
+    try {
+        if (!mainWindow || mainWindow.isDestroyed()) {
+			logger.error("SHWIN | Window destroyed during show");
+            return;
         }
-    }, 16); 
-}			
+
+        ensureWinVisible(mainWindow);
+		clampWinSize(mainWindow);
+
+		const bounds = mainWindow.getBounds();
+		logger.debug(`Showing window at: x=${bounds.x}, y=${bounds.y}, w=${bounds.width}, h=${bounds.height}`);
+
+		mainWindow.show();
+
+        if (process.platform === "win32") {
+            mainWindow.focus();
+        } else if (process.platform === "darwin") {
+            mainWindow.focus();
+            mainWindow.setVisibleOnAllWorkspaces(false);
+        } else {
+            mainWindow.setFocusable(true);
+            mainWindow.focus();
+        }
+
+        mainWindow.setSkipTaskbar(!config.get("detachedMode"));
+
+    } catch (error) {
+        logger.error(`SHWIN | general error | ${error.message}`);
+    } finally {
+        isShowing = false;
+    }
+}		
 
 export function toggleFullScreen(mode = !mainWindow.isFullScreen()) {
 	config.set("fullScreen", mode);

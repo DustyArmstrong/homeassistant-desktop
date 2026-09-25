@@ -3,6 +3,7 @@ import logger from "electron-log";
 import Positioner from "electron-traywindow-positioner";
 import config from "../config.js";
 import { currentInstance } from './instance.js';
+import { ensureWinVisible } from "./display.js";
 import { getMainWindow, showWindow, createMainWindow, toggleFullScreen } from './window.js';
 import { registerKeyboardShortcut, unregisterKeyboardShortcut } from "./shortcuts.js";
 import { checkForUpdates, closeWebSocket, isWebSocketOpen } from "./networking.js";
@@ -494,6 +495,12 @@ export function changePosition() {
             const { x } = Positioner.calculate(mainWindow.getBounds(), trayBounds, alignment);
             mainWindow.setPosition(x, displayWorkArea.y + displayWorkArea.height - windowBounds.height, false);
         }
+    }
+
+    const wasVisible = ensureWinVisible(mainWindow);
+    if (!wasVisible) {
+        const bounds = mainWindow.getBounds();
+        logger.warn(`Position changed to an off-screen window at ${JSON.stringify(bounds)}, you may need to reset (option 3)`);
     }
 }
 
