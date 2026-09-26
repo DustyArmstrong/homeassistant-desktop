@@ -21,6 +21,11 @@ export async function showError(isError) {
 
 export async function showSleep(isSleeping) {
     const mainWindow = getMainWindow();
+    if (!mainWindow) {
+        logger.warn("SHOSLP | No main window available");
+        return;
+    }
+    
     if (!isSleeping && mainWindow.webContents.getURL().includes("sleeping.html")) {
         mainWindow.loadURL(indexFile);
     }
@@ -29,106 +34,113 @@ export async function showSleep(isSleeping) {
     }
 }
 
-export function ensureWinVisible(winInstance) {
-    const bounds = winInstance.getBounds();
-    const displays = screen.getAllDisplays();
+export function initWindowBounds(winInstance, defaultWidth = 420, defaultHeight = 460, savedPos) {
+    if (!winInstance || winInstance.isDestroyed()) return;
 
-    for (const display of displays) {
-        const { x, y, width, height } = display.workArea;
-        if (
-            bounds.x >= x &&
-            bounds.y >= y &&
-            bounds.x + bounds.width <= x + width &&
-            bounds.y + bounds.height <=y + height
-        ) {
-            return true;
+    const primaryDisplay = screen.getPrimaryDisplay();
+    const primaryWorkArea = primaryDisplay.workArea;
+
+    const centerFallbackX = primaryWorkArea.x + Math.round((primaryWorkArea.width - defaultWidth) / 2);
+    const centerFallbackY = primaryWorkArea.y + Math.round((primaryWorkArea.height - defaultHeight) / 2);
+
+    let targetX = centerFallbackX;
+    let targetY = centerFallbackY;
+
+    if (Array.isArray(savedPos) && savedPos.length >= 2) {
+        const potentialX = Number(savedPos[0]);
+        const potentialY = Number(savedPos[1]);
+
+        if (!isNaN(potentialX) && !isNaN(potentialY)) {
+
+            const displayNearestWindow = screen.getDisplayNearestPoint({ x: potentialX, y: potentialY });
+            const bounds = displayNearestWindow.bounds;
+
+
+            const isVisibleX = (potentialX >= bounds.x) && (potentialX <= bounds.x + bounds.width);
+            const isVisibleY = (potentialY >= bounds.y) && (potentialY <= bounds.y + bounds.height);
+
+            if (isVisibleX && isVisibleY) {
+
+                targetX = potentialX;
+                targetY = potentialY;
+                logger.debug(`WINIT | Using valid saved window position: ${targetX}, ${targetY}`);
+            } else {
+                logger.warn(`WINIT | Saved position (${potentialX}, ${potentialY}) is off-screen. Resetting to primary display center.`);
+            }
+        } else {
+            logger.warn("WINIT | Configured window position contains invalid numbers. Resetting to defaults.");
         }
+    } else {
+        logger.info("WINIT | No valid saved window position array provided. Centering window.");
     }
+
+    winInstance.setPosition(Math.round(targetX), Math.round(targetY));
     
-    const primaryDisplay = screen.getPrimaryDisplay();
-    const workArea = primaryDisplay.workArea;
-    const newX = workArea.x + Math.floor((workArea.width - bounds.width) / 2);
-    const newY = workArea.y + Math.floor((workArea.height - bounds.height) /2);
-
-    logger.warn(`Window bounds ${JSON.stringify(bounds)} are not on-screen. Bounds forced to primary display at coordinates ${newX}, ${newY}`);
-    winInstance.setPosition(newX, newY);
-    return false;
-}
-
-export function initWindowBounds(winInstance, defaultWidth = 420, defaultHeight = 460) {
-    const primaryDisplay = screen.getPrimaryDisplay();
-    const workArea = primaryDisplay.workArea;
-
-    const initialX = workArea.x + Math.floor((workArea.width - defaultWidth) /2);
-    const initialY = workArea.y + Math.floor((workArea.height - defaultHeight) /2);
-    winInstance.setPosition(initialX, initialY);
-
-    logger.info(`Window position moved to ${initialX}, ${initialY} on primary display`);
+    logger.info(`WINIT | Window position initialized to x=${Math.round(targetX)}, y=${Math.round(targetY)}`);
 }
 
 export function clampWinSize(winInstance, maxWidthRatio = 1.5, maxHeightRatio = 1.5) {
-    const size = winInstance.getSize();
-    let [width, height] = size;
+    const [currentWidth, currentHeight] = winInstance.getSize();
+    let width = currentWidth;
+    let height = currentHeight;
 
-    const primaryDisplay = screen.getPrimaryDisplay();
-    const workArea = primaryDisplay.workArea;
 
-    const maxAllowWidth = Math.floor(workArea.width * maxWidthRatio);
-    const maxAllowHeight = Math.floor(workArea.height * maxHeightRatio);
+    const bounds = winInstance.getBounds();
+    const displayNearestWindow = screen.getDisplayMatching(bounds);
+    const workArea = displayNearestWindow.workArea;
 
     const minAllowWidth = 420;
     const minAllowHeight = 460;
+    const maxWidthCap = 4000;
+    const maxHeightCap = 4000;
 
-    const maxWidthCap = 5000;
-    const maxHeightCap = 5000;
+    const maxAllowWidth = Math.round(workArea.width * maxWidthRatio);
+    const maxAllowHeight = Math.round(workArea.height * maxHeightRatio);
 
     let clamped = false;
 
-    if (width > maxWidthCap) {
-        logger.error(`WINIT | FATAL | Window width ${width} has exceeded the maximum ceiling allowed!`);
-        width = maxAllowWidth;
+    if (width < minAllowWidth) {
+        logger.warn(`WINIT | Window width ${width} below floor ${minAllowWidth}, clamping.`);
+        width = minAllowWidth;
+        clamped = true;
+    } else if (width > maxWidthCap) {
+        logger.error(`WINIT | FATAL | Window width ${width} exceeded ceiling ${maxWidthCap}, clamping.`);
+        width = maxWidthCap;
         clamped = true;
     } else if (width > maxAllowWidth) {
-        logger.warn(`WINIT | Window width ${width} exceeds soft width cap ${maxAllowWidth}, clamping...`);
+        logger.warn(`WINIT | Window width ${width} exceeds soft cap ${maxAllowWidth}, clamping.`);
         width = maxAllowWidth;
-        clamped = true;
-    }
-
-    if (height > maxHeightCap) {
-        logger.error(`WINIT | FATAL | Window width ${height} has exceeded the maximum ceiling allowed!`);
-        height = maxAllowHeight;
-        clamped = true;
-    } else if (height > maxAllowHeight) {
-        logger.warn(`WINIT | Window width ${height} exceeds soft width cap ${maxAllowHeight}, clamping...`);
-        height = maxAllowHeight;
-        clamped = true;
-    }
-
-    if (width < minAllowWidth) {
-        logger.warn(`WINIT | Window width ${width} is below the mimimum operating floor, clamping...`);
-        width = minAllowWidth;
         clamped = true;
     }
 
     if (height < minAllowHeight) {
-        logger.warn(`WINIT | Window width ${height} is below the mimimum operating floor, clamping...`);
+        logger.warn(`WINIT | Window height ${height} below floor ${minAllowHeight}, clamping.`);
         height = minAllowHeight;
+        clamped = true;
+    } else if (height > maxHeightCap) {
+        logger.error(`WINIT | FATAL | Window height ${height} exceeded ceiling ${maxHeightCap}, clamping.`);
+        height = maxHeightCap;
+        clamped = true;
+    } else if (height > maxAllowHeight) {
+        logger.warn(`WINIT | Window height ${height} exceeds soft cap ${maxAllowHeight}, clamping.`);
+        height = maxAllowHeight;
         clamped = true;
     }
 
     if (clamped) {
         winInstance.setSize(width, height);
-        logger.info(`Window size clamped to ${width}x${height}`);
+        logger.info(`WINIT | Window size clamped to ${width}x${height} (Scale Factor: ${displayNearestWindow.scaleFactor})`);
     }
 
-    return { width, height, clamped};
+    return { width, height, clamped };
 }
+
 
 export function validateBounds(winInstance) {
     const size = winInstance.getSize();
     const [width, height] = size;
 
-    if (width > 5000 || height > 5000) {
+    if (width > 4000 || height > 4000) {
         logger.error(`WINIT | FATAL | Window size exceeds sensible boundaries, resetting...`);
         return false;
     }

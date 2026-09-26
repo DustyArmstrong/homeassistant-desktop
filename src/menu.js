@@ -3,14 +3,14 @@ import logger from "electron-log";
 import Positioner from "electron-traywindow-positioner";
 import config from "../config.js";
 import { currentInstance } from './instance.js';
-import { ensureWinVisible } from "./display.js";
-import { getMainWindow, showWindow, createMainWindow, toggleFullScreen } from './window.js';
+import { getMainWindow, showWindow, createMainWindow, toggleFullScreen } from './window.js'; 
 import { registerKeyboardShortcut, unregisterKeyboardShortcut } from "./shortcuts.js";
 import { checkForUpdates, closeWebSocket, isWebSocketOpen } from "./networking.js";
 import { getAutoStartStatus, modAutoLaunch } from "./power.js";
 
 let tray = undefined;
 let forceQuit = false;
+let isChangingPosition = false;
 
 const __dirname = import.meta.dirname;
 const indexFile = `file://${__dirname}/../web/index.html`;
@@ -455,52 +455,87 @@ export function getMenu() {
     ]);
 }
 
-export function changePosition() {
+
+export function changePosition(targetWidth, targetHeight) {
+    if (isChangingPosition) {
+        logger.debug("CHNGPOS | Already changing position, skipping");
+        return;
+    }
+    
     const mainWindow = getMainWindow();
-    const trayBounds = tray.getBounds();
-    const windowBounds = mainWindow.getBounds();
-    const displayWorkArea = screen.getDisplayNearestPoint({
-        x: trayBounds.x,
-        y: trayBounds.y,
-    }).workArea;
-    const taskBarPosition = Positioner.getTaskbarPosition(trayBounds);
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    if (!tray || tray.isDestroyed()) return;
 
-    if (taskBarPosition === "top" || taskBarPosition === "bottom") {
-        const alignment = {
-            x: "center",
-            y: taskBarPosition === "top" ? "up" : "down",
-        };
 
-        if (trayBounds.x + (trayBounds.width + windowBounds.width) / 2 < displayWorkArea.width) {
-            Positioner.position(mainWindow, trayBounds, alignment);
-        } else {
-            const { y } = Positioner.calculate(mainWindow.getBounds(), trayBounds, alignment);
-
-            mainWindow.setPosition(
-                displayWorkArea.width - windowBounds.width + displayWorkArea.x,
-                y + (taskBarPosition === "bottom" && displayWorkArea.y),
-                false
-            );
-        }
-    } else {
-        const alignment = {
-            x: taskBarPosition,
-            y: "center",
-        };
-
-        if (trayBounds.y + (trayBounds.height + windowBounds.height) / 2 < displayWorkArea.height) {
-            const { x, y } = Positioner.calculate(mainWindow.getBounds(), trayBounds, alignment);
-            mainWindow.setPosition(x + (taskBarPosition === "right" && displayWorkArea.x), y);
-        } else {
-            const { x } = Positioner.calculate(mainWindow.getBounds(), trayBounds, alignment);
-            mainWindow.setPosition(x, displayWorkArea.y + displayWorkArea.height - windowBounds.height, false);
-        }
+    if (!targetWidth || !targetHeight) {
+        const storedSize = config.get("windowSize") || [420, 460];
+        targetWidth = storedSize[0];
+        targetHeight = storedSize[1];
     }
 
-    const wasVisible = ensureWinVisible(mainWindow);
-    if (!wasVisible) {
-        const bounds = mainWindow.getBounds();
-        logger.warn(`Position changed to an off-screen window at ${JSON.stringify(bounds)}, you may need to reset (option 3)`);
+    isChangingPosition = true;
+    try {
+        const trayPhysicalBounds = tray.getBounds();
+        const displayNearestTray = screen.getDisplayMatching(trayPhysicalBounds);
+        const scaleFactor = displayNearestTray.scaleFactor;
+        const workAreaLogical = displayNearestTray.workArea;
+
+        const trayLogical = {
+            x: process.platform === 'win32' ? Math.round(trayPhysicalBounds.x / scaleFactor) : trayPhysicalBounds.x,
+            y: process.platform === 'win32' ? Math.round(trayPhysicalBounds.y / scaleFactor) : trayPhysicalBounds.y,
+            width: process.platform === 'win32' ? Math.round(trayPhysicalBounds.width / scaleFactor) : trayPhysicalBounds.width,
+            height: process.platform === 'win32' ? Math.round(trayPhysicalBounds.height / scaleFactor) : trayPhysicalBounds.height,
+        };
+
+        const taskBarPosition = Positioner.getTaskbarPosition(trayPhysicalBounds);
+
+        let targetX, targetY;
+
+        if (taskBarPosition === "top" || taskBarPosition === "bottom") {
+            const spaceToRight = workAreaLogical.x + workAreaLogical.width - trayLogical.x;
+            const spaceNeeded = trayLogical.width + targetWidth;
+
+            if (spaceToRight >= spaceNeeded) {
+                targetX = trayLogical.x;
+                targetY = taskBarPosition === "bottom" 
+                    ? workAreaLogical.y + workAreaLogical.height - targetHeight
+                    : trayLogical.y;
+                
+                targetX = Math.max(workAreaLogical.x, Math.min(targetX, workAreaLogical.x + workAreaLogical.width - targetWidth));
+                targetY = Math.max(workAreaLogical.y, Math.min(targetY, workAreaLogical.y + workAreaLogical.height - targetHeight));
+            } else {
+                targetX = workAreaLogical.x + workAreaLogical.width - targetWidth;
+                targetY = taskBarPosition === "bottom" ? workAreaLogical.y + workAreaLogical.height - targetHeight : workAreaLogical.y;
+            }
+        } else {
+            const spaceBelow = workAreaLogical.y + workAreaLogical.height - trayLogical.y;
+            const spaceNeeded = trayLogical.height + targetHeight;
+
+            if (spaceBelow >= spaceNeeded) {
+                targetY = trayLogical.y;
+                targetX = taskBarPosition === "right" ? workAreaLogical.x + workAreaLogical.width - targetWidth : trayLogical.x;
+                
+                targetX = Math.max(workAreaLogical.x, Math.min(targetX, workAreaLogical.x + workAreaLogical.width - targetWidth));
+                targetY = Math.max(workAreaLogical.y, Math.min(targetY, workAreaLogical.y + workAreaLogical.height - targetHeight));
+            } else {
+                targetX = taskBarPosition === "right" ? workAreaLogical.x + workAreaLogical.width - targetWidth : workAreaLogical.x;
+                targetY = workAreaLogical.y + workAreaLogical.height - targetHeight;
+            }
+        }
+
+        mainWindow.setBounds({
+            x: Math.round(targetX),
+            y: Math.round(targetY),
+            width: targetWidth,
+            height: targetHeight
+        }, false);
+        
+        logger.debug(`CHNGPOS | Placed window at: x=${Math.round(targetX)}, y=${Math.round(targetY)}, w=${targetWidth}, h=${targetHeight}`);
+        
+    } catch (error) {
+        logger.error(`CHNGPOS | Positioning error | ${error}`);
+    } finally {
+        isChangingPosition = false;
     }
 }
 
