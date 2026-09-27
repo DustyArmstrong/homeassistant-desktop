@@ -3,16 +3,18 @@ import logger from "electron-log";
 import Positioner from "electron-traywindow-positioner";
 import config from "../config.js";
 import { currentInstance } from './instance.js';
-import { getMainWindow, showWindow, createMainWindow, setWindowFocusTimer, toggleFullScreen } from './window.js';
+import { getMainWindow, showWindow, createMainWindow, toggleFullScreen } from './window.js'; 
 import { registerKeyboardShortcut, unregisterKeyboardShortcut } from "./shortcuts.js";
 import { checkForUpdates, closeWebSocket, isWebSocketOpen } from "./networking.js";
 import { getAutoStartStatus, modAutoLaunch } from "./power.js";
 
-let tray;
+let tray = undefined;
 let forceQuit = false;
+let isChangingPosition = false;
 
 const __dirname = import.meta.dirname;
 const indexFile = `file://${__dirname}/../web/index.html`;
+
 
 export function getMenu() {
     const mainWindow = getMainWindow();
@@ -90,16 +92,6 @@ export function getMenu() {
         ...instancesMenu,
         {
             type: "separator",
-        },
-        {
-            label: "Hover to Show",
-            visible: process.platform !== "linux" && !config.get("detachedMode"),
-            enabled: !config.get("detachedMode"),
-            type: "checkbox",
-            checked: !config.get("disableHover"),
-            click: () => {
-                config.set("disableHover", !config.get("disableHover"));
-            },
         },
         {
             label: "Stay on Top",
@@ -324,13 +316,8 @@ export function getMenu() {
                     checked: config.get("disableFrame"),
                     click: async () => {
                         config.set("disableFrame", !config.get("disableFrame"));
-                        app.relaunch();
-                        if (mainWindow && !mainWindow.isDestroyed()) {
-                            mainWindow.destroy();
-                        }
-                        setTimeout(() => {
-                            app.exit(0);
-                        }, 50);
+                        app.relaunch({ args: process.argv.slice(1) });
+                        app.exit(0);
                     }
                 }
             ]
@@ -468,119 +455,146 @@ export function getMenu() {
     ]);
 }
 
-export function changePosition() {
+
+export function changePosition(targetWidth, targetHeight) {
+    if (isChangingPosition) {
+        return;
+    }
+    
     const mainWindow = getMainWindow();
-    const trayBounds = tray.getBounds();
-    const windowBounds = mainWindow.getBounds();
-    const displayWorkArea = screen.getDisplayNearestPoint({
-        x: trayBounds.x,
-        y: trayBounds.y,
-    }).workArea;
-    const taskBarPosition = Positioner.getTaskbarPosition(trayBounds);
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    if (!tray || tray.isDestroyed()) return;
 
-    if (taskBarPosition === "top" || taskBarPosition === "bottom") {
-        const alignment = {
-            x: "center",
-            y: taskBarPosition === "top" ? "up" : "down",
+
+    if (!targetWidth || !targetHeight) {
+        const storedSize = config.get("windowSize") || [420, 460];
+        targetWidth = storedSize[0];
+        targetHeight = storedSize[1];
+    }
+
+    isChangingPosition = true;
+    try {
+        const trayPhysicalBounds = tray.getBounds();
+        const displayNearestTray = screen.getDisplayMatching(trayPhysicalBounds);
+        const scaleFactor = displayNearestTray.scaleFactor;
+        const workAreaLogical = displayNearestTray.workArea;
+
+        const trayLogical = {
+            x: process.platform === 'win32' ? Math.round(trayPhysicalBounds.x / scaleFactor) : trayPhysicalBounds.x,
+            y: process.platform === 'win32' ? Math.round(trayPhysicalBounds.y / scaleFactor) : trayPhysicalBounds.y,
+            width: process.platform === 'win32' ? Math.round(trayPhysicalBounds.width / scaleFactor) : trayPhysicalBounds.width,
+            height: process.platform === 'win32' ? Math.round(trayPhysicalBounds.height / scaleFactor) : trayPhysicalBounds.height,
         };
 
-        if (trayBounds.x + (trayBounds.width + windowBounds.width) / 2 < displayWorkArea.width) {
-            Positioner.position(mainWindow, trayBounds, alignment);
-        } else {
-            const { y } = Positioner.calculate(mainWindow.getBounds(), trayBounds, alignment);
+        const taskBarPosition = Positioner.getTaskbarPosition(trayPhysicalBounds);
 
-            mainWindow.setPosition(
-                displayWorkArea.width - windowBounds.width + displayWorkArea.x,
-                y + (taskBarPosition === "bottom" && displayWorkArea.y),
-                false
-            );
-        }
-    } else {
-        const alignment = {
-            x: taskBarPosition,
-            y: "center",
-        };
+        let targetX, targetY;
 
-        if (trayBounds.y + (trayBounds.height + windowBounds.height) / 2 < displayWorkArea.height) {
-            const { x, y } = Positioner.calculate(mainWindow.getBounds(), trayBounds, alignment);
-            mainWindow.setPosition(x + (taskBarPosition === "right" && displayWorkArea.x), y);
+        if (taskBarPosition === "top" || taskBarPosition === "bottom") {
+            const spaceToRight = workAreaLogical.x + workAreaLogical.width - trayLogical.x;
+            const spaceNeeded = trayLogical.width + targetWidth;
+
+            if (spaceToRight >= spaceNeeded) {
+                targetX = trayLogical.x;
+                targetY = taskBarPosition === "bottom" 
+                    ? workAreaLogical.y + workAreaLogical.height - targetHeight
+                    : trayLogical.y;
+                
+                targetX = Math.max(workAreaLogical.x, Math.min(targetX, workAreaLogical.x + workAreaLogical.width - targetWidth));
+                targetY = Math.max(workAreaLogical.y, Math.min(targetY, workAreaLogical.y + workAreaLogical.height - targetHeight));
+            } else {
+                targetX = workAreaLogical.x + workAreaLogical.width - targetWidth;
+                targetY = taskBarPosition === "bottom" ? workAreaLogical.y + workAreaLogical.height - targetHeight : workAreaLogical.y;
+            }
         } else {
-            const { x } = Positioner.calculate(mainWindow.getBounds(), trayBounds, alignment);
-            mainWindow.setPosition(x, displayWorkArea.y + displayWorkArea.height - windowBounds.height, false);
+            const spaceBelow = workAreaLogical.y + workAreaLogical.height - trayLogical.y;
+            const spaceNeeded = trayLogical.height + targetHeight;
+
+            if (spaceBelow >= spaceNeeded) {
+                targetY = trayLogical.y;
+                targetX = taskBarPosition === "right" ? workAreaLogical.x + workAreaLogical.width - targetWidth : trayLogical.x;
+                
+                targetX = Math.max(workAreaLogical.x, Math.min(targetX, workAreaLogical.x + workAreaLogical.width - targetWidth));
+                targetY = Math.max(workAreaLogical.y, Math.min(targetY, workAreaLogical.y + workAreaLogical.height - targetHeight));
+            } else {
+                targetX = taskBarPosition === "right" ? workAreaLogical.x + workAreaLogical.width - targetWidth : workAreaLogical.x;
+                targetY = workAreaLogical.y + workAreaLogical.height - targetHeight;
+            }
         }
+
+        mainWindow.setBounds({
+            x: Math.round(targetX),
+            y: Math.round(targetY),
+            width: targetWidth,
+            height: targetHeight
+        }, false);
+        
+        
+    } catch (error) {
+        logger.error(`CHNGPOS | Positioning error | ${error}`);
+    } finally {
+        isChangingPosition = false;
     }
 }
 
 export function createTray() {
-    if (tray instanceof Tray) {
+    if (tray && !tray.isDestroyed()) {
         return;
     }
 
     logger.info("Initialized Tray menu");
-    const iconName = config.get("userTrayIcon");
-    tray = new Tray(
-        ["win32", "linux"].includes(process.platform) ? `${__dirname}/assets/${iconName}` : `${__dirname}/assets/${iconName}`
-    );
+    let iconName = config.get("userTrayIcon");
+    if (process.platform === "darwin" && iconName === "IconWin.png"); {
+        config.set("userTrayIcon", "IconTemplate.png");
+        iconName = "IconTemplate.png";
+    }
+    tray = new Tray(`${__dirname}/assets/${iconName}`);
 
     tray.on("click", () => {
         const mainWindow = getMainWindow();
-        if (!mainWindow) {
+
+        if (!mainWindow || mainWindow.isDestroyed()) {
             return;
         }
-        if (mainWindow.isVisible()) {
-            mainWindow.hide();
 
-            if (process.platform === "darwin") {
-                app.dock.hide();
+        try {
+            if (mainWindow.isVisible() && !mainWindow.isMinimized()) {
+                mainWindow.hide();
+
+                if (process.platform === "darwin") {
+                    app.dock.hide();
+                }
+            } else {
+                showWindow();
             }
-        } else {
-            showWindow();
+        } catch (error) {
+            logger.error(`TRAY | click handler error | ${error}`);
         }
     });
 
     tray.on("right-click", () => {
         const mainWindow = getMainWindow();
-        if (!mainWindow) {
-            return;
-        }
-        if (!config.get("detachedMode")) {
-            mainWindow.hide();
-        }
 
-        tray.popUpContextMenu(getMenu());
-    });
-
-    let timer = undefined;
-
-    tray.on("mouse-move", () => {
-        const mainWindow = getMainWindow();
-        if (!mainWindow) {
-            return;
-        }
-        if (config.get("detachedMode") || mainWindow.isAlwaysOnTop() || config.get("disableHover")) {
+        if (!mainWindow || mainWindow.isDestroyed()) {
             return;
         }
 
-        if (!mainWindow.isVisible()) {
-            showWindow();
-        }
-
-        if (timer) {
-            clearTimeout(timer);
-        }
-
-        timer = setTimeout(() => {
-            const mousePos = screen.getCursorScreenPoint();
-            const trayBounds = tray.getBounds();
-
-            if (
-                !(mousePos.x >= trayBounds.x && mousePos.x <= trayBounds.x + trayBounds.width) ||
-                !(mousePos.y >= trayBounds.y && mousePos.y <= trayBounds.y + trayBounds.height)
-            ) {
-                setWindowFocusTimer();
+        try {
+            if (!config.get("detachedMode")) {
+                mainWindow.hide();
             }
-        }, 100);
+            tray.popUpContextMenu(getMenu());
+        } catch (error) {
+            logger.error(`TRAY | tray right-click handler error | ${error}`);
+        }
     });
+}
+
+export function destroyTray() {
+    if (tray && !tray.isDestroyed()) {
+        tray.destroy();
+    }
+    tray = undefined;
 }
 
 function changeIcon(iconName) {

@@ -10,6 +10,14 @@ import { currentInstance } from "./src/instance.js";
 import { createMainWindow, toggleFullScreen, getMainWindow } from "./src/window.js";
 import { checkAutoStart, setResumeHandledStatus, setSleepHandledStatus } from "./src/power.js";
 
+process.on("uncaughtException", (err) => {
+    logger.error(`uncaughtException: ${err.stack}`);
+});
+
+process.on("unhandledRejection", (reason) => {
+    logger.error(`unhandledRejection: ${reason}`);
+});
+
 if (config.get("highDPIMode")) {
 	app.commandLine.appendSwitch('high-dpi-support', 'true');
 }
@@ -17,7 +25,6 @@ if (config.get("highDPIMode")) {
 if (config.get("forceScaling")) {
 	app.commandLine.appendSwitch('force-device-scaling-factor', config.get("scaleFactor"));
 }
-
 
 logger.errorHandler.startCatching();
 logger.info(`${app.name} started`);
@@ -71,10 +78,8 @@ app.whenReady().then(async () => {
 		});
 	}
 
-	if (!config.has("currentInstance")) {
-		config.set("disableHover", true);
-	}
-
+	config.set("disableHover", true); // Set this every time until a later version - hover has been removed, disable it for safety
+	
 	if (!config.has("autoUpdate")) {
 		config.set("autoUpdate", true);
 	}

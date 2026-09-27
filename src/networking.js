@@ -229,7 +229,9 @@ export function handleUnavailable(reason) {
     if (retryingAvailability) {
         return;
     }
-    showError(true);
+    if (reason !== "WEBSKT | token expired") {
+        showError(true);
+    }
     if (wsConnection) {
         closeWebSocket("instance became unavailable");
     }
