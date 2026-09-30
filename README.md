@@ -20,7 +20,7 @@ Just download the latest version for your platform from the [release section](ht
 
 ## Usage / Features
 
-- hover / click the tray icon to open the app
+- click the tray icon to open the app (starts hidden)
 - supports multiple instances of Home Assistant (including automatic switching)
 - automatic instance discovery using bonjour
 - automatic reconnection to your instance on connection loss
@@ -111,7 +111,7 @@ The `.deb`, `.rpm` and `.pacman` are provided on a "best efforts" basis. I've do
 
 ### Visual issues
 
-If you experience visual issues with your Home Assistant dashboards when using Home Assistant Desktop, in particular if these are not consistent with your external web browser, this is most often caused by cached content. A function is present in the application to remove several layers of cache - in most cases the basic (soft) clear should suffice. You can find this and other options under the **Clear Application Data** menu. Should this fail, a hard clear (includes session storage) is the next best option. The application now features an 'F5' refresh option, which can be found in the menu, and performs a refresh ignoring cache. 
+If you experience visual issues with your Home Assistant dashboards when using Home Assistant Desktop, in particular if these are not consistent with your external web browser, this is most often caused by cached content. A function is present in the application to remove several layers of cache - in most cases the basic (soft) clear should suffice. You can find this and other options under the **Clear Application Data** menu. Should this fail, a hard clear (includes session storage) is the next best option. The application now features an 'F5' refresh option, which can be found in the menu (starts enabled on fresh installs), and performs a refresh ignoring cache. 
 
 If everything fails, you can manually clear the cache by removing all the content from:
 

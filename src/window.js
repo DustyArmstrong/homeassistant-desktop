@@ -38,7 +38,7 @@ export function registerWindowListeners(mainWindow) {
 			isAdjustingBounds = true;
 			try {
 				const bounds = mainWindow.getBounds();
-				logger.info(`WINIT | Window initialized | x=${bounds.x}, y=${bounds.y}, w=${bounds.width}, h=${bounds.height}`);
+				logger.info(`Window initialized | x=${bounds.x}, y=${bounds.y}, w=${bounds.width}, h=${bounds.height}`);
 			} catch (error) {
 				logger.error(`WINIT | Window could not be initialized | ${error}`);
 			} finally {
@@ -51,7 +51,6 @@ export function registerWindowListeners(mainWindow) {
 		try {
 			logger.info("Loading index...", attempt);
 			await mainWindow.loadURL(indexFile);
-			logger.info("Initialized main window");
 			mainWindowLoaded = true;
 			return true;
 		} catch (error) {
@@ -61,7 +60,7 @@ export function registerWindowListeners(mainWindow) {
 				return tryLoadURL(attempt + 1, maxAttempts);
 			}
 			logger.error("MAINWIN | unable to load URL, cannot resolve network");
-			showError(true);
+			showError(true, mainWindow);
 			return false;
 		}
 	};
@@ -69,7 +68,7 @@ export function registerWindowListeners(mainWindow) {
 	mainWindow.webContents.on("did-fail-load", async (e, errorCode, validatedURL, errorCodeDescription) => {
 		logger.error(`WEBCONT | URL: ${validatedURL} | Code: ${errorCode} | Desc: ${errorCodeDescription}`);
 		if (!mainWindowLoaded || winIsReloading) {
-			logger.warn("Window hasn't loaded yet or is already reloading...");
+			logger.warn("WEBCONT | Window is currently loading...");
 			return;
 		}
 		winIsReloading = true;
@@ -77,7 +76,7 @@ export function registerWindowListeners(mainWindow) {
 			await tryLoadURL(1);
 		} catch (error) {
 			logger.error(`WEBCONT | webcontents failed to load | ${error}`);
-			showError(true);
+			showError(true, mainWindow);
 		} finally {
 			winIsReloading = false;
 		}
@@ -89,10 +88,10 @@ export function registerWindowListeners(mainWindow) {
 		if (RELOAD_REASONS.has(detailed.reason)) {
 			try {
 				mainWindow.webContents.reload();
-				logger.info("Renderer rebooted successfully.");
+				logger.info("Renderer rebooted successfully!");
 			} catch (error) {
 				logger.error(`RENDR | renderer process failed | ${error}`);
-				showError(true);
+				showError(true, mainWindow);
 			}
 		}
 	});
@@ -111,38 +110,22 @@ export function registerWindowListeners(mainWindow) {
 	});
 
 	mainWindow.on("resize", (_event) => {
-		if (isAdjustingBounds) {
-			return;
-		}
-
-		if (mainWindow.isFullScreen()) {
+		if (isAdjustingBounds || mainWindow.isFullScreen()) {
 			return;
 		}
 
 		if (!validateBounds(mainWindow)) {
-			isAdjustingBounds = true;
-			try {
-				mainWindow.setSize(defaultSize[0], defaultSize[1]);
-				logger.error("WINSIZE | Corrupt window size reset to defaults");
-			} catch (error) {
-				logger.error(`WINSIZE | Window size error | ${error}`);
-			} finally {
-				isAdjustingBounds = false;
-			}
+			resetToDefaultBounds();
 			return;
 		}
 
-		const currentSize = mainWindow.getSize();
-
-		if (config.get("detachedMode")) {
-			config.set("windowSizeDetached", currentSize);
-		} else {
+		if (!config.get("detachedMode")) {
+			const currentSize = mainWindow.getSize();
 			const now = Date.now();
 			if (now - lastPositionChangeTime > 200) {
 				lastPositionChangeTime = now;
 				changePosition(currentSize[0], currentSize[1]);
 			}
-			config.set("windowSize", currentSize);
 		}
 	});
 
@@ -150,11 +133,65 @@ export function registerWindowListeners(mainWindow) {
 		if (isAdjustingBounds) {
 			return;
 		}
+	});
+
+	mainWindow.on("resized", () => {
+		if (isAdjustingBounds || mainWindow.isFullScreen()) {
+			return;
+		}
+
+		const finalSize = mainWindow.getSize();
 
 		if (config.get("detachedMode")) {
-			config.set("windowPosition", mainWindow.getPosition());
+			config.set("windowSizeDetached", finalSize);
+		} else {
+			config.set("windowSize", finalSize);
+			isAdjustingBounds = true; 
+			try {
+				changePosition(finalSize[0], finalSize[1]);
+			} catch (error) {
+				logger.error(`WINSIZE | Error saving window configuration | ${error}`);
+			} finally {
+				isAdjustingBounds = false;
+			}
 		}
+		logger.info("Window size saved!");
 	});
+
+	mainWindow.on("moved", () => {
+		if (isAdjustingBounds) {
+			return; 
+		}
+
+		const finalPosition = mainWindow.getPosition();
+		const currentSize = mainWindow.getSize();
+
+		if (config.get("detachedMode")) {
+			config.set("windowPosition", finalPosition);
+		} else {
+			isAdjustingBounds = true;
+			try {
+				changePosition(currentSize[0], currentSize[1]);
+			} catch (error) {
+				logger.error(`WINSIZE | Error saving window configuration | ${error}`);
+			} finally {
+				isAdjustingBounds = false;
+			}
+		}
+		logger.info("Window size saved!");
+	});
+
+	function resetToDefaultBounds() {
+		isAdjustingBounds = true;
+		try {
+			mainWindow.setSize(defaultSize[0], defaultSize[1]);
+			logger.error("WINSIZE | Corrupt window size reset to defaults");
+		} catch (error) {
+			logger.error(`WINSIZE | Window size error | ${error}`);
+		} finally {
+			isAdjustingBounds = false;
+		}
+	}
 
 	mainWindow.on("close", (event) => {
 		if (!forceQuitStatus()) {
@@ -191,7 +228,7 @@ export async function createMainWindow(show = false) {
 		mainWindow = new BrowserWindow({
 			width: 420,
 			height: 460,
-			minWidth: 420,
+			minWidth: 300,
 			minHeight: 460,
 			show: false,
 			skipTaskbar: !show,
@@ -219,10 +256,14 @@ export async function createMainWindow(show = false) {
 				if (config.has("windowPosition") && config.has("windowSizeDetached")) {
 					const [xPosition, yPosition] = config.get("windowPosition");
 					const [width, height] = config.get("windowSizeDetached");
-					const clamped = clampWinSize(mainWindow);
-					mainWindow.setBounds({ x: xPosition, y: yPosition, width, height });
+					const clamped = clampWinSize(mainWindow, 0.8, 0.8, width, height);
+					const { width: finalWidth, height: finalHeight, x: safeX, y: safeY } = clamped;
+					mainWindow.setBounds({ x: xPosition, y: yPosition, width: finalWidth, height: finalHeight });
 					if (clamped.clamped) {
-						logger.warn(`WINSIZE | Detached bounds clamped | x=${xPosition}, y=${yPosition}, w=${width}, h=${height}`);
+						logger.warn(`WINSIZE | Detached bounds clamped | x=${safeX}, y=${safeY}, w=${finalWidth}, h=${finalHeight}`);
+						config.set("windowSizeDetached", [finalWidth, finalHeight]);
+						config.set("windowPosition", [safeX, safeY]);
+						mainWindow.setBounds({ x: safeX, y: safeY, width: finalWidth, height: finalHeight });
 					}
 				} else {
 					config.set("windowPosition", mainWindow.getPosition());
@@ -231,10 +272,13 @@ export async function createMainWindow(show = false) {
 				}
 			} else if (config.has("windowSize")) {
 				const [width, height] = config.get("windowSize");
-				const clamped = clampWinSize(mainWindow);
-				mainWindow.setSize(width, height);
+				const clamped = clampWinSize(mainWindow, 0.8, 0.8, width, height);
+				const { width: finalWidth, height: finalHeight } = clamped;
+				mainWindow.setSize(finalWidth, finalHeight);
 				if (clamped.clamped) {
-					logger.warn(`WINSIZE | Bounds clamped | ${width}x${height}`);
+					logger.warn(`WINSIZE | Bounds clamped | ${finalWidth}x${finalHeight}`);
+					config.set("windowSize", [finalWidth, finalHeight]);
+					mainWindow.setSize(finalWidth, finalHeight);
 				}
 			} else {
 				config.set("windowSize", mainWindow.getSize());

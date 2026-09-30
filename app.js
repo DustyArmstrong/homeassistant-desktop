@@ -18,6 +18,8 @@ process.on("unhandledRejection", (reason) => {
     logger.error(`unhandledRejection: ${reason}`);
 });
 
+app.commandLine.appendSwitch('disk-cache-size', '104857600');
+
 if (config.get("highDPIMode")) {
 	app.commandLine.appendSwitch('high-dpi-support', 'true');
 }
@@ -77,8 +79,6 @@ app.whenReady().then(async () => {
 			toggleFullScreen();
 		});
 	}
-
-	config.set("disableHover", true); // Set this every time until a later version - hover has been removed, disable it for safety
 	
 	if (!config.has("autoUpdate")) {
 		config.set("autoUpdate", true);

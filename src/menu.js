@@ -544,7 +544,7 @@ export function createTray() {
 
     logger.info("Initialized Tray menu");
     let iconName = config.get("userTrayIcon");
-    if (process.platform === "darwin" && iconName === "IconWin.png"); {
+    if (process.platform === "darwin" && iconName === "IconWin.png") {
         config.set("userTrayIcon", "IconTemplate.png");
         iconName = "IconTemplate.png";
     }

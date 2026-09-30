@@ -3,7 +3,7 @@ import logger from "electron-log";
 import AutoLaunch from "auto-launch";
 import { isWebSocketOpen, closeWebSocket, getResponse, handleUnavailable } from "./networking.js";
 import { currentInstance } from './instance.js';
-import { reinitMainWindow } from "./window.js";
+import { reinitMainWindow, getMainWindow } from "./window.js";
 import { showSleep } from './display.js';
 
 let autostartEnabled = false;
@@ -17,7 +17,10 @@ powerMonitor.on('suspend', () => {
         if (isWebSocketOpen()) {
             closeWebSocket("machine going to sleep");
         }
-        showSleep(true);
+        const mainWindow = getMainWindow();
+        if (mainWindow) {
+            showSleep(true, mainWindow);
+        }
         sleepHandled = true;
     }
 });
