@@ -20,6 +20,7 @@ let isInitializing = false;
 let showWindowRetries = 0;
 const MAX_SHOW_RETRIES = 10;
 let lastPositionChangeTime = 0;
+let resizeTimeout = null;
 const defaultSize = config.get("windowSize") || [420, 460];
 
 const __dirname = import.meta.dirname;
@@ -119,6 +120,34 @@ export function registerWindowListeners(mainWindow) {
 			return;
 		}
 
+		if (process.platform === "linux") {
+			if (resizeTimeout) {
+				clearTimeout(resizeTimeout);
+			}
+
+			resizeTimeout = setTimeout(() => {
+				const finalSize = mainWindow.getSize();
+
+				if (config.get("detachedMode")) {
+					config.set("windowSizeDetached", finalSize);
+				} else {
+					config.set("windowSize", finalSize);
+					isAdjustingBounds = true;
+					try {
+						changePosition(finalSize[0], finalSize[1]);
+					} catch (error) {
+						logger.error(`WINSIZE | Error saving window configuration | ${error}`);
+					} finally {
+						isAdjustingBounds = false;
+					}
+				}
+				
+				logger.info("Window size saved successfully!");
+				
+				resizeTimeout = null; 
+			}, 300);
+		}
+
 		if (!config.get("detachedMode")) {
 			const currentSize = mainWindow.getSize();
 			const now = Date.now();
@@ -131,6 +160,24 @@ export function registerWindowListeners(mainWindow) {
 
 	mainWindow.on("move", () => {
 		if (isAdjustingBounds) {
+			return;
+		}
+		if (process.platform === "linux") {
+			const now = Date.now();
+			if (now - lastPositionChangeTime < 800) {
+				return;
+			}
+			lastPositionChangeTime = now;
+
+			const finalPosition = mainWindow.getPosition();
+			const currentSize = mainWindow.getSize();
+			
+			if (config.get("detachedMode")) {
+				config.set("windowPosition", finalPosition);
+			} else {
+				config.set("windowPosition", finalPosition);
+				changePosition(currentSize[0], currentSize[1]);
+			}
 			return;
 		}
 	});
@@ -194,6 +241,10 @@ export function registerWindowListeners(mainWindow) {
 	}
 
 	mainWindow.on("close", (event) => {
+		if (resizeTimeout) {
+			clearTimeout(resizeTimeout);
+			resizeTimeout = null;
+		}
 		if (!forceQuitStatus()) {
 			mainWindow.hide();
 			event.preventDefault();
@@ -352,7 +403,7 @@ export function showWindow() {
 
 	isAdjustingBounds = true;
 	try {
-		if (!config.get("detachedMode") && process.platform !== "linux") {
+		if (!config.get("detachedMode")) {
 			const now = Date.now();
 			if (now - lastPositionChangeTime > 200) {
 				lastPositionChangeTime = now;

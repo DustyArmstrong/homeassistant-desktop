@@ -221,77 +221,81 @@ export function getMenu() {
                     ]
                 },
                 {
-                    label: "Scaling",
-                    submenu: [
-                        {
-                            label: "Enable high DPI",
-                            type: "checkbox",
-                            checked: config.get("highDPIMode"),
-                            click: async () => {
-                                config.set("highDPIMode", !config.get("highDPIMode"));
-                                app.relaunch();
-                                app.exit(0);
-                            }
-                        },
-                        {
-                            label: "Force scaling factor",
-                            type: "checkbox",
-                            checked: config.get("forceScaling"),
-                            click: async () => {
-                                if (!config.get("scaleFactor")) {
-                                    config.set("scaleFactor", "1");
-                                }
-                                config.set("forceScaling", !config.get("forceScaling"));
-                                app.relaunch();
-                                app.exit(0);
-                            }
-                        },
-                        {
-                            label: "Set scaling factor",
-                            click: async () => {
-                                dialog
-                                    .showMessageBox({
-                                        type: "question",
-                                        message: "Set a scale factor for the application.",
-                                        buttons: ["1", "1.25", "1.5", "1.75", "2"],
-                                    })
-                                    .then(async (res) => {
-                                        const scaleActions = {
-                                            0: async () => {
-                                                logger.info("Scaling factor set to 1");
-                                                config.set("scaleFactor", "1");
-                                            },
-                                            1: async () => {
-                                                logger.info("Scaling factor set to 1.25");
-                                                config.set("scaleFactor", "1.25");
-                                            },
-                                            2: async () => {
-                                                logger.info("Scaling factor set to 1.5");
-                                                config.set("scaleFactor", "1.5");
-                                            },
-                                            3: async () => {
-                                                logger.info("Scaling factor set to 1.75");
-                                                config.set("scaleFactor", "1.75");
-                                            },
-                                            4: async () => {
-                                                logger.info("Scaling factor set to 2");
-                                                config.set("scaleFactor", "2");
-                                            }
-                                        };
-                                        const scaleAction = scaleActions[res.response];
-                                        if (!scaleAction) return;
-                                        try {
-                                            await scaleAction();
-                                            app.relaunch();
-                                            app.exit(0);
-                                        } catch (error) {
-                                            logger.error(`DISP | could not set scale factor | ${error}`);
-                                        }
-                                    });
-                            }
+                    label: "Disable Window Frame",
+                    type: "checkbox",
+                    checked: config.get("disableFrame"),
+                    click: async () => {
+                        config.set("disableFrame", !config.get("disableFrame"));
+                        if (process.platform === "linux") {
+                            mainWindow.hide();
+                            await createMainWindow(config.get("disableFrame"));
+                        } else {
+                            app.relaunch({ args: process.argv.slice(1) });
+                            app.exit(0);
                         }
-                    ]
+                    }
                 },
+                ...(process.platform === "linux" ? [{            
+                    label: "Linux Tray Position",
+                    submenu: [
+                        {   
+                            label: "Top Left",
+                            type: "radio",
+                            checked: config.get("linuxTrayPosition") === "top-left" || !config.get("linuxTrayPosition"),
+                            click: () => {
+                                config.set("linuxTrayPosition", "top-left");
+                                logger.info("Linux tray position set to: top-left");;
+                                const mainWindow = getMainWindow();
+                                if (mainWindow && !mainWindow.isDestroyed() && !config.get("detachedMode")) {
+                                    const size = mainWindow.getSize();
+                                    changePosition(size[0], size[1]);
+                                }
+                            }
+                        },
+                        {   
+                            label: "Top Right",
+                            type: "radio",
+                            checked: config.get("linuxTrayPosition") === "top-right",
+                            click: () => {
+                                config.set("linuxTrayPosition", "top-right");
+                                logger.info("Linux tray position set to: top-right");
+                                const mainWindow = getMainWindow();
+                                if (mainWindow && !mainWindow.isDestroyed() && !config.get("detachedMode")) {
+                                    const size = mainWindow.getSize();
+                                    changePosition(size[0], size[1]);
+                                }
+                            }
+                        },
+                        {   
+                            label: "Bottom Left",
+                            type: "radio",
+                            checked: config.get("linuxTrayPosition") === "bottom-left",
+                            click: () => {
+                                config.set("linuxTrayPosition", "bottom-left");
+                                logger.info("Linux tray position set to: bottom-left");
+                                const mainWindow = getMainWindow();
+                                if (mainWindow && !mainWindow.isDestroyed() && !config.get("detachedMode")) {
+                                    const size = mainWindow.getSize();
+                                    changePosition(size[0], size[1]);
+                                }
+                            }
+                        },
+                        {   
+                            label: "Bottom Right",
+                            type: "radio",
+                            checked: config.get("linuxTrayPosition") === "bottom-right",
+                            click: () => {
+                                config.set("linuxTrayPosition", "bottom-right");
+                                logger.info("Linux tray position set to: bottom-right");
+                                const mainWindow = getMainWindow();
+                                if (mainWindow && !mainWindow.isDestroyed() && !config.get("detachedMode")) {
+                                    const size = mainWindow.getSize();
+                                    changePosition(size[0], size[1]);
+                                }
+                            }
+                        },
+                    ]
+                }] : []),
             ]
         },
         {
@@ -310,16 +314,6 @@ export function getMenu() {
                         await createMainWindow(config.get("detachedMode"));
                     }
                 },
-                {
-                    label: "Disable Window Frame",
-                    type: "checkbox",
-                    checked: config.get("disableFrame"),
-                    click: async () => {
-                        config.set("disableFrame", !config.get("disableFrame"));
-                        app.relaunch({ args: process.argv.slice(1) });
-                        app.exit(0);
-                    }
-                }
             ]
         },
         {
@@ -460,11 +454,9 @@ export function changePosition(targetWidth, targetHeight) {
     if (isChangingPosition) {
         return;
     }
-    
     const mainWindow = getMainWindow();
     if (!mainWindow || mainWindow.isDestroyed()) return;
     if (!tray || tray.isDestroyed()) return;
-
 
     if (!targetWidth || !targetHeight) {
         const storedSize = config.get("windowSize") || [420, 460];
@@ -474,19 +466,80 @@ export function changePosition(targetWidth, targetHeight) {
 
     isChangingPosition = true;
     try {
-        const trayPhysicalBounds = tray.getBounds();
+        const trayPhysicalBounds = tray.getBounds();        
         const displayNearestTray = screen.getDisplayMatching(trayPhysicalBounds);
         const scaleFactor = displayNearestTray.scaleFactor;
         const workAreaLogical = displayNearestTray.workArea;
 
-        const trayLogical = {
-            x: process.platform === 'win32' ? Math.round(trayPhysicalBounds.x / scaleFactor) : trayPhysicalBounds.x,
-            y: process.platform === 'win32' ? Math.round(trayPhysicalBounds.y / scaleFactor) : trayPhysicalBounds.y,
-            width: process.platform === 'win32' ? Math.round(trayPhysicalBounds.width / scaleFactor) : trayPhysicalBounds.width,
-            height: process.platform === 'win32' ? Math.round(trayPhysicalBounds.height / scaleFactor) : trayPhysicalBounds.height,
-        };
+        let trayLogical;
+        let useFallbackTrayPosition = false;
 
-        const taskBarPosition = Positioner.getTaskbarPosition(trayPhysicalBounds);
+        if (process.platform === "linux" && 
+            (trayPhysicalBounds.width === 0 || trayPhysicalBounds.height === 0)) {
+            
+            useFallbackTrayPosition = true;
+            
+            const traySize = 24;
+            const margin = 8;
+            
+            const linuxPosition = config.get("linuxTrayPosition") || "bottom-right";
+            
+            switch (linuxPosition) {
+                case "top-left":
+                    trayLogical = {
+                        x: workAreaLogical.x + margin,
+                        y: workAreaLogical.y + margin,
+                        width: traySize,
+                        height: traySize
+                    };
+                    break;
+                case "top-right":
+                    trayLogical = {
+                        x: workAreaLogical.x + workAreaLogical.width - traySize - margin,
+                        y: workAreaLogical.y + margin,
+                        width: traySize,
+                        height: traySize
+                    };
+                    break;
+                case "bottom-left":
+                    trayLogical = {
+                        x: workAreaLogical.x + margin,
+                        y: workAreaLogical.y + workAreaLogical.height - traySize - margin,
+                        width: traySize,
+                        height: traySize
+                    };
+                    break;
+                case "bottom-right":
+                default:
+                    trayLogical = {
+                        x: workAreaLogical.x + workAreaLogical.width - traySize - margin,
+                        y: workAreaLogical.y + workAreaLogical.height - traySize - margin,
+                        width: traySize,
+                        height: traySize
+                    };
+                    break;
+            }
+            
+        } else {
+            trayLogical = {
+                x: process.platform === 'win32' || process.platform === 'linux' 
+                    ? Math.round(trayPhysicalBounds.x / scaleFactor) 
+                    : trayPhysicalBounds.x,
+                y: process.platform === 'win32' || process.platform === 'linux' 
+                    ? Math.round(trayPhysicalBounds.y / scaleFactor) 
+                    : trayPhysicalBounds.y,
+                width: process.platform === 'win32' || process.platform === 'linux' 
+                    ? Math.round(trayPhysicalBounds.width / scaleFactor) 
+                    : trayPhysicalBounds.width,
+                height: process.platform === 'win32' || process.platform === 'linux' 
+                    ? Math.round(trayPhysicalBounds.height / scaleFactor) 
+                    : trayPhysicalBounds.height,
+            };
+        }
+
+        const taskBarPosition = useFallbackTrayPosition 
+            ? (config.get("linuxTrayPosition") === "top-left" || config.get("linuxTrayPosition") === "top-right" ? "top" : "bottom")
+            : Positioner.getTaskbarPosition(trayPhysicalBounds);
 
         let targetX, targetY;
 
@@ -504,7 +557,9 @@ export function changePosition(targetWidth, targetHeight) {
                 targetY = Math.max(workAreaLogical.y, Math.min(targetY, workAreaLogical.y + workAreaLogical.height - targetHeight));
             } else {
                 targetX = workAreaLogical.x + workAreaLogical.width - targetWidth;
-                targetY = taskBarPosition === "bottom" ? workAreaLogical.y + workAreaLogical.height - targetHeight : workAreaLogical.y;
+                targetY = taskBarPosition === "bottom" 
+                    ? workAreaLogical.y + workAreaLogical.height - targetHeight 
+                    : workAreaLogical.y;
             }
         } else {
             const spaceBelow = workAreaLogical.y + workAreaLogical.height - trayLogical.y;
@@ -512,12 +567,16 @@ export function changePosition(targetWidth, targetHeight) {
 
             if (spaceBelow >= spaceNeeded) {
                 targetY = trayLogical.y;
-                targetX = taskBarPosition === "right" ? workAreaLogical.x + workAreaLogical.width - targetWidth : trayLogical.x;
+                targetX = taskBarPosition === "right" 
+                    ? workAreaLogical.x + workAreaLogical.width - targetWidth 
+                    : trayLogical.x;
                 
                 targetX = Math.max(workAreaLogical.x, Math.min(targetX, workAreaLogical.x + workAreaLogical.width - targetWidth));
                 targetY = Math.max(workAreaLogical.y, Math.min(targetY, workAreaLogical.y + workAreaLogical.height - targetHeight));
             } else {
-                targetX = taskBarPosition === "right" ? workAreaLogical.x + workAreaLogical.width - targetWidth : workAreaLogical.x;
+                targetX = taskBarPosition === "right" 
+                    ? workAreaLogical.x + workAreaLogical.width - targetWidth 
+                    : workAreaLogical.x;
                 targetY = workAreaLogical.y + workAreaLogical.height - targetHeight;
             }
         }
@@ -528,7 +587,6 @@ export function changePosition(targetWidth, targetHeight) {
             width: targetWidth,
             height: targetHeight
         }, false);
-        
         
     } catch (error) {
         logger.error(`CHNGPOS | Positioning error | ${error}`);

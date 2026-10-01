@@ -47,6 +47,8 @@ Just download the latest version for your platform from the [release section](ht
 
 Per above, Wayland does not support - at least in any straightforward manner for this particular project - programmatic window positioning. Some users have had success with Remember Window Positions - https://github.com/rxappdev/RememberWindowPositions. This tool allows you to manage your window positions for many applications running under Wayland, not just HA Desktop. 
 
+Some distributions and desktop environments may require a double click to show the window.
+
 This section will be updated to reflect any other solutions as needed. At this time, window positioning on Wayland is not something this project can effectively handle within its own scope. 
 
 #### Linux AppImage
@@ -83,11 +85,14 @@ In the below example, the AppImage and PNG have been renamed. This file is named
 [Desktop Entry]
 Type=Application
 Name=HomeAssistantDesktop
-Exec=env GDK_BACKEND=x11 XDG_SESSION_TYPE=x11 /full/path/to/homeassistant.AppImage
+Exec=env GDK_BACKEND=x11 XDG_SESSION_TYPE=x11 /full/path/to/homeassistant.AppImage --ozone-platform=x11
 Icon=/path/to/icon/home.png
 Terminal=false
 Categories=Utility;
+StartupWMClass=homeassistant-desktop
 ```
+
+You can also try: `Exec=env GDK_BACKEND=x11 ELECTRON_OZONE_PLATFORM_HINT=x11 /full/path/to/homeassistant.AppImage --ozone-platform=x11` on the above.
 
 Or with native Wayland: 
 
@@ -99,6 +104,7 @@ Exec=/full/path/to/homeassistant.AppImage --enable-features=UseOzonePlatform --o
 Icon=/path/to/icon/home.png
 Terminal=false
 Categories=Utility;
+StartupWMClass=homeassistant-desktop
 ```
 
 The PNG can be obtained by first extracting the AppImage (`./appimage.AppImage --appimage-extract`), and can then be found inside the extracted folder: `./squashfs-root/usr/share/icons/hicolor/1800x1800/apps`. You can change `Terminal=false` to `true` if you want to see console output (handy for viewing the live runtime logs). You may still require some deps depending on your system (e.g. something GTK-related). Depending on the build of Electron, there can be many issues with Electron on Linux.

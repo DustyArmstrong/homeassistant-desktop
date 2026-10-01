@@ -52,18 +52,15 @@ export function initWindowBounds(winInstance, defaultWidth = 420, defaultHeight 
         const potentialY = Number(savedPos[1]);
 
         if (!isNaN(potentialX) && !isNaN(potentialY)) {
-
             const displayNearestWindow = screen.getDisplayNearestPoint({ x: potentialX, y: potentialY });
             const bounds = displayNearestWindow.bounds;
-
 
             const isVisibleX = (potentialX >= bounds.x) && (potentialX <= bounds.x + bounds.width);
             const isVisibleY = (potentialY >= bounds.y) && (potentialY <= bounds.y + bounds.height);
 
             if (isVisibleX && isVisibleY) {
-
                 targetX = potentialX;
-                targetY = potentialY;;
+                targetY = potentialY;
             } else {
                 logger.warn(`WINIT | Saved position (${potentialX}, ${potentialY}) is off-screen. Resetting to primary display center...`);
             }
@@ -75,7 +72,6 @@ export function initWindowBounds(winInstance, defaultWidth = 420, defaultHeight 
     }
 
     winInstance.setPosition(Math.round(targetX), Math.round(targetY));
-    
 }
 
 export function clampWinSize(winInstance, maxWidthRatio = 0.8, maxHeightRatio = 0.8, proposedWidth = null, proposedHeight = null) {
