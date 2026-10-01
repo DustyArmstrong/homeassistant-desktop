@@ -125,7 +125,7 @@ export async function initWebSocketHealth(instance) {
             wsClosedResolve = null;
 
             wsConnection.onopen = () => {
-                logger.info("Websocket connection established.");
+                logger.info("Websocket connection established");
                 lastActivityTime = Date.now();
 
                 wsConnection.send(
@@ -229,13 +229,30 @@ export function handleUnavailable(reason) {
     if (retryingAvailability) {
         return;
     }
-    showError(true);
+
+    const mainWindow = getMainWindow();
+    if (reason !== "WEBSKT | token expired") {
+        logger.error(reason);
+        if (mainWindow) {
+            showError(true, mainWindow);
+        } else {
+            logger.warn("AVCHK | Window was not available to show an error");
+        }
+    }
+
     if (wsConnection) {
         closeWebSocket("instance became unavailable");
     }
-    logger.error(reason);
+
     if (reason === "WEBSKT | authentication failed!") {
-        return;
+        if (mainWindow) {
+            showError(true, mainWindow);
+            mainWindow.webContents.send("retry-update", "Websocket authentication has failed, you may need to sign in again manually");
+            return;
+        } else {
+            return;
+        }
+
     }
     if (config.get("autoReconnect") === true) retryAvailabilityCheck();
     if (config.get("automaticSwitching")) checkForAvailableInstance();

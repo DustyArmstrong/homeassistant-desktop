@@ -3,16 +3,18 @@ import logger from "electron-log";
 import Positioner from "electron-traywindow-positioner";
 import config from "../config.js";
 import { currentInstance } from './instance.js';
-import { getMainWindow, showWindow, createMainWindow, setWindowFocusTimer, toggleFullScreen } from './window.js';
+import { getMainWindow, showWindow, createMainWindow, toggleFullScreen } from './window.js'; 
 import { registerKeyboardShortcut, unregisterKeyboardShortcut } from "./shortcuts.js";
 import { checkForUpdates, closeWebSocket, isWebSocketOpen } from "./networking.js";
 import { getAutoStartStatus, modAutoLaunch } from "./power.js";
 
-let tray;
+let tray = undefined;
 let forceQuit = false;
+let isChangingPosition = false;
 
 const __dirname = import.meta.dirname;
 const indexFile = `file://${__dirname}/../web/index.html`;
+
 
 export function getMenu() {
     const mainWindow = getMainWindow();
@@ -90,16 +92,6 @@ export function getMenu() {
         ...instancesMenu,
         {
             type: "separator",
-        },
-        {
-            label: "Hover to Show",
-            visible: process.platform !== "linux" && !config.get("detachedMode"),
-            enabled: !config.get("detachedMode"),
-            type: "checkbox",
-            checked: !config.get("disableHover"),
-            click: () => {
-                config.set("disableHover", !config.get("disableHover"));
-            },
         },
         {
             label: "Stay on Top",
@@ -229,77 +221,81 @@ export function getMenu() {
                     ]
                 },
                 {
-                    label: "Scaling",
-                    submenu: [
-                        {
-                            label: "Enable high DPI",
-                            type: "checkbox",
-                            checked: config.get("highDPIMode"),
-                            click: async () => {
-                                config.set("highDPIMode", !config.get("highDPIMode"));
-                                app.relaunch();
-                                app.exit(0);
-                            }
-                        },
-                        {
-                            label: "Force scaling factor",
-                            type: "checkbox",
-                            checked: config.get("forceScaling"),
-                            click: async () => {
-                                if (!config.get("scaleFactor")) {
-                                    config.set("scaleFactor", "1");
-                                }
-                                config.set("forceScaling", !config.get("forceScaling"));
-                                app.relaunch();
-                                app.exit(0);
-                            }
-                        },
-                        {
-                            label: "Set scaling factor",
-                            click: async () => {
-                                dialog
-                                    .showMessageBox({
-                                        type: "question",
-                                        message: "Set a scale factor for the application.",
-                                        buttons: ["1", "1.25", "1.5", "1.75", "2"],
-                                    })
-                                    .then(async (res) => {
-                                        const scaleActions = {
-                                            0: async () => {
-                                                logger.info("Scaling factor set to 1");
-                                                config.set("scaleFactor", "1");
-                                            },
-                                            1: async () => {
-                                                logger.info("Scaling factor set to 1.25");
-                                                config.set("scaleFactor", "1.25");
-                                            },
-                                            2: async () => {
-                                                logger.info("Scaling factor set to 1.5");
-                                                config.set("scaleFactor", "1.5");
-                                            },
-                                            3: async () => {
-                                                logger.info("Scaling factor set to 1.75");
-                                                config.set("scaleFactor", "1.75");
-                                            },
-                                            4: async () => {
-                                                logger.info("Scaling factor set to 2");
-                                                config.set("scaleFactor", "2");
-                                            }
-                                        };
-                                        const scaleAction = scaleActions[res.response];
-                                        if (!scaleAction) return;
-                                        try {
-                                            await scaleAction();
-                                            app.relaunch();
-                                            app.exit(0);
-                                        } catch (error) {
-                                            logger.error(`DISP | could not set scale factor | ${error}`);
-                                        }
-                                    });
-                            }
+                    label: "Disable Window Frame",
+                    type: "checkbox",
+                    checked: config.get("disableFrame"),
+                    click: async () => {
+                        config.set("disableFrame", !config.get("disableFrame"));
+                        if (process.platform === "linux") {
+                            mainWindow.hide();
+                            await createMainWindow(config.get("disableFrame"));
+                        } else {
+                            app.relaunch({ args: process.argv.slice(1) });
+                            app.exit(0);
                         }
-                    ]
+                    }
                 },
+                ...(process.platform === "linux" ? [{            
+                    label: "Linux Tray Position",
+                    submenu: [
+                        {   
+                            label: "Top Left",
+                            type: "radio",
+                            checked: config.get("linuxTrayPosition") === "top-left" || !config.get("linuxTrayPosition"),
+                            click: () => {
+                                config.set("linuxTrayPosition", "top-left");
+                                logger.info("Linux tray position set to: top-left");;
+                                const mainWindow = getMainWindow();
+                                if (mainWindow && !mainWindow.isDestroyed() && !config.get("detachedMode")) {
+                                    const size = mainWindow.getSize();
+                                    changePosition(size[0], size[1]);
+                                }
+                            }
+                        },
+                        {   
+                            label: "Top Right",
+                            type: "radio",
+                            checked: config.get("linuxTrayPosition") === "top-right",
+                            click: () => {
+                                config.set("linuxTrayPosition", "top-right");
+                                logger.info("Linux tray position set to: top-right");
+                                const mainWindow = getMainWindow();
+                                if (mainWindow && !mainWindow.isDestroyed() && !config.get("detachedMode")) {
+                                    const size = mainWindow.getSize();
+                                    changePosition(size[0], size[1]);
+                                }
+                            }
+                        },
+                        {   
+                            label: "Bottom Left",
+                            type: "radio",
+                            checked: config.get("linuxTrayPosition") === "bottom-left",
+                            click: () => {
+                                config.set("linuxTrayPosition", "bottom-left");
+                                logger.info("Linux tray position set to: bottom-left");
+                                const mainWindow = getMainWindow();
+                                if (mainWindow && !mainWindow.isDestroyed() && !config.get("detachedMode")) {
+                                    const size = mainWindow.getSize();
+                                    changePosition(size[0], size[1]);
+                                }
+                            }
+                        },
+                        {   
+                            label: "Bottom Right",
+                            type: "radio",
+                            checked: config.get("linuxTrayPosition") === "bottom-right",
+                            click: () => {
+                                config.set("linuxTrayPosition", "bottom-right");
+                                logger.info("Linux tray position set to: bottom-right");
+                                const mainWindow = getMainWindow();
+                                if (mainWindow && !mainWindow.isDestroyed() && !config.get("detachedMode")) {
+                                    const size = mainWindow.getSize();
+                                    changePosition(size[0], size[1]);
+                                }
+                            }
+                        },
+                    ]
+                }] : []),
             ]
         },
         {
@@ -318,21 +314,6 @@ export function getMenu() {
                         await createMainWindow(config.get("detachedMode"));
                     }
                 },
-                {
-                    label: "Disable Window Frame",
-                    type: "checkbox",
-                    checked: config.get("disableFrame"),
-                    click: async () => {
-                        config.set("disableFrame", !config.get("disableFrame"));
-                        app.relaunch();
-                        if (mainWindow && !mainWindow.isDestroyed()) {
-                            mainWindow.destroy();
-                        }
-                        setTimeout(() => {
-                            app.exit(0);
-                        }, 50);
-                    }
-                }
             ]
         },
         {
@@ -468,119 +449,210 @@ export function getMenu() {
     ]);
 }
 
-export function changePosition() {
+
+export function changePosition(targetWidth, targetHeight) {
+    if (isChangingPosition) {
+        return;
+    }
     const mainWindow = getMainWindow();
-    const trayBounds = tray.getBounds();
-    const windowBounds = mainWindow.getBounds();
-    const displayWorkArea = screen.getDisplayNearestPoint({
-        x: trayBounds.x,
-        y: trayBounds.y,
-    }).workArea;
-    const taskBarPosition = Positioner.getTaskbarPosition(trayBounds);
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    if (!tray || tray.isDestroyed()) return;
 
-    if (taskBarPosition === "top" || taskBarPosition === "bottom") {
-        const alignment = {
-            x: "center",
-            y: taskBarPosition === "top" ? "up" : "down",
-        };
+    if (!targetWidth || !targetHeight) {
+        const storedSize = config.get("windowSize") || [420, 460];
+        targetWidth = storedSize[0];
+        targetHeight = storedSize[1];
+    }
 
-        if (trayBounds.x + (trayBounds.width + windowBounds.width) / 2 < displayWorkArea.width) {
-            Positioner.position(mainWindow, trayBounds, alignment);
+    isChangingPosition = true;
+    try {
+        const trayPhysicalBounds = tray.getBounds();        
+        const displayNearestTray = screen.getDisplayMatching(trayPhysicalBounds);
+        const scaleFactor = displayNearestTray.scaleFactor;
+        const workAreaLogical = displayNearestTray.workArea;
+
+        let trayLogical;
+        let useFallbackTrayPosition = false;
+
+        if (process.platform === "linux" && 
+            (trayPhysicalBounds.width === 0 || trayPhysicalBounds.height === 0)) {
+            
+            useFallbackTrayPosition = true;
+            
+            const traySize = 24;
+            const margin = 8;
+            
+            const linuxPosition = config.get("linuxTrayPosition") || "bottom-right";
+            
+            switch (linuxPosition) {
+                case "top-left":
+                    trayLogical = {
+                        x: workAreaLogical.x + margin,
+                        y: workAreaLogical.y + margin,
+                        width: traySize,
+                        height: traySize
+                    };
+                    break;
+                case "top-right":
+                    trayLogical = {
+                        x: workAreaLogical.x + workAreaLogical.width - traySize - margin,
+                        y: workAreaLogical.y + margin,
+                        width: traySize,
+                        height: traySize
+                    };
+                    break;
+                case "bottom-left":
+                    trayLogical = {
+                        x: workAreaLogical.x + margin,
+                        y: workAreaLogical.y + workAreaLogical.height - traySize - margin,
+                        width: traySize,
+                        height: traySize
+                    };
+                    break;
+                case "bottom-right":
+                default:
+                    trayLogical = {
+                        x: workAreaLogical.x + workAreaLogical.width - traySize - margin,
+                        y: workAreaLogical.y + workAreaLogical.height - traySize - margin,
+                        width: traySize,
+                        height: traySize
+                    };
+                    break;
+            }
+            
         } else {
-            const { y } = Positioner.calculate(mainWindow.getBounds(), trayBounds, alignment);
-
-            mainWindow.setPosition(
-                displayWorkArea.width - windowBounds.width + displayWorkArea.x,
-                y + (taskBarPosition === "bottom" && displayWorkArea.y),
-                false
-            );
+            trayLogical = {
+                x: process.platform === 'win32' || process.platform === 'linux' 
+                    ? Math.round(trayPhysicalBounds.x / scaleFactor) 
+                    : trayPhysicalBounds.x,
+                y: process.platform === 'win32' || process.platform === 'linux' 
+                    ? Math.round(trayPhysicalBounds.y / scaleFactor) 
+                    : trayPhysicalBounds.y,
+                width: process.platform === 'win32' || process.platform === 'linux' 
+                    ? Math.round(trayPhysicalBounds.width / scaleFactor) 
+                    : trayPhysicalBounds.width,
+                height: process.platform === 'win32' || process.platform === 'linux' 
+                    ? Math.round(trayPhysicalBounds.height / scaleFactor) 
+                    : trayPhysicalBounds.height,
+            };
         }
-    } else {
-        const alignment = {
-            x: taskBarPosition,
-            y: "center",
-        };
 
-        if (trayBounds.y + (trayBounds.height + windowBounds.height) / 2 < displayWorkArea.height) {
-            const { x, y } = Positioner.calculate(mainWindow.getBounds(), trayBounds, alignment);
-            mainWindow.setPosition(x + (taskBarPosition === "right" && displayWorkArea.x), y);
+        const taskBarPosition = useFallbackTrayPosition 
+            ? (config.get("linuxTrayPosition") === "top-left" || config.get("linuxTrayPosition") === "top-right" ? "top" : "bottom")
+            : Positioner.getTaskbarPosition(trayPhysicalBounds);
+
+        let targetX, targetY;
+
+        if (taskBarPosition === "top" || taskBarPosition === "bottom") {
+            const spaceToRight = workAreaLogical.x + workAreaLogical.width - trayLogical.x;
+            const spaceNeeded = trayLogical.width + targetWidth;
+
+            if (spaceToRight >= spaceNeeded) {
+                targetX = trayLogical.x;
+                targetY = taskBarPosition === "bottom" 
+                    ? workAreaLogical.y + workAreaLogical.height - targetHeight
+                    : trayLogical.y;
+                
+                targetX = Math.max(workAreaLogical.x, Math.min(targetX, workAreaLogical.x + workAreaLogical.width - targetWidth));
+                targetY = Math.max(workAreaLogical.y, Math.min(targetY, workAreaLogical.y + workAreaLogical.height - targetHeight));
+            } else {
+                targetX = workAreaLogical.x + workAreaLogical.width - targetWidth;
+                targetY = taskBarPosition === "bottom" 
+                    ? workAreaLogical.y + workAreaLogical.height - targetHeight 
+                    : workAreaLogical.y;
+            }
         } else {
-            const { x } = Positioner.calculate(mainWindow.getBounds(), trayBounds, alignment);
-            mainWindow.setPosition(x, displayWorkArea.y + displayWorkArea.height - windowBounds.height, false);
+            const spaceBelow = workAreaLogical.y + workAreaLogical.height - trayLogical.y;
+            const spaceNeeded = trayLogical.height + targetHeight;
+
+            if (spaceBelow >= spaceNeeded) {
+                targetY = trayLogical.y;
+                targetX = taskBarPosition === "right" 
+                    ? workAreaLogical.x + workAreaLogical.width - targetWidth 
+                    : trayLogical.x;
+                
+                targetX = Math.max(workAreaLogical.x, Math.min(targetX, workAreaLogical.x + workAreaLogical.width - targetWidth));
+                targetY = Math.max(workAreaLogical.y, Math.min(targetY, workAreaLogical.y + workAreaLogical.height - targetHeight));
+            } else {
+                targetX = taskBarPosition === "right" 
+                    ? workAreaLogical.x + workAreaLogical.width - targetWidth 
+                    : workAreaLogical.x;
+                targetY = workAreaLogical.y + workAreaLogical.height - targetHeight;
+            }
         }
+
+        mainWindow.setBounds({
+            x: Math.round(targetX),
+            y: Math.round(targetY),
+            width: targetWidth,
+            height: targetHeight
+        }, false);
+        
+    } catch (error) {
+        logger.error(`CHNGPOS | Positioning error | ${error}`);
+    } finally {
+        isChangingPosition = false;
     }
 }
 
 export function createTray() {
-    if (tray instanceof Tray) {
+    if (tray && !tray.isDestroyed()) {
         return;
     }
 
     logger.info("Initialized Tray menu");
-    const iconName = config.get("userTrayIcon");
-    tray = new Tray(
-        ["win32", "linux"].includes(process.platform) ? `${__dirname}/assets/${iconName}` : `${__dirname}/assets/${iconName}`
-    );
+    let iconName = config.get("userTrayIcon");
+    if (process.platform === "darwin" && iconName === "IconWin.png") {
+        config.set("userTrayIcon", "IconTemplate.png");
+        iconName = "IconTemplate.png";
+    }
+    tray = new Tray(`${__dirname}/assets/${iconName}`);
 
     tray.on("click", () => {
         const mainWindow = getMainWindow();
-        if (!mainWindow) {
+
+        if (!mainWindow || mainWindow.isDestroyed()) {
             return;
         }
-        if (mainWindow.isVisible()) {
-            mainWindow.hide();
 
-            if (process.platform === "darwin") {
-                app.dock.hide();
+        try {
+            if (mainWindow.isVisible() && !mainWindow.isMinimized()) {
+                mainWindow.hide();
+
+                if (process.platform === "darwin") {
+                    app.dock.hide();
+                }
+            } else {
+                showWindow();
             }
-        } else {
-            showWindow();
+        } catch (error) {
+            logger.error(`TRAY | click handler error | ${error}`);
         }
     });
 
     tray.on("right-click", () => {
         const mainWindow = getMainWindow();
-        if (!mainWindow) {
-            return;
-        }
-        if (!config.get("detachedMode")) {
-            mainWindow.hide();
-        }
 
-        tray.popUpContextMenu(getMenu());
-    });
-
-    let timer = undefined;
-
-    tray.on("mouse-move", () => {
-        const mainWindow = getMainWindow();
-        if (!mainWindow) {
-            return;
-        }
-        if (config.get("detachedMode") || mainWindow.isAlwaysOnTop() || config.get("disableHover")) {
+        if (!mainWindow || mainWindow.isDestroyed()) {
             return;
         }
 
-        if (!mainWindow.isVisible()) {
-            showWindow();
-        }
-
-        if (timer) {
-            clearTimeout(timer);
-        }
-
-        timer = setTimeout(() => {
-            const mousePos = screen.getCursorScreenPoint();
-            const trayBounds = tray.getBounds();
-
-            if (
-                !(mousePos.x >= trayBounds.x && mousePos.x <= trayBounds.x + trayBounds.width) ||
-                !(mousePos.y >= trayBounds.y && mousePos.y <= trayBounds.y + trayBounds.height)
-            ) {
-                setWindowFocusTimer();
+        try {
+            if (!config.get("detachedMode")) {
+                mainWindow.hide();
             }
-        }, 100);
+            tray.popUpContextMenu(getMenu());
+        } catch (error) {
+            logger.error(`TRAY | tray right-click handler error | ${error}`);
+        }
     });
+}
+
+export function destroyTray() {
+    if (tray && !tray.isDestroyed()) {
+        tray.destroy();
+    }
+    tray = undefined;
 }
 
 function changeIcon(iconName) {

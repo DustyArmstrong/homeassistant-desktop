@@ -1,5 +1,4 @@
 import { app, globalShortcut } from "electron";
-//import { createLongLivedTokenAuth } from "home-assistant-js-websocket";
 import logger from "electron-log";
 import config from "./config.js";
 import "./src/ipc.js";
@@ -10,18 +9,30 @@ import { currentInstance } from "./src/instance.js";
 import { createMainWindow, toggleFullScreen, getMainWindow } from "./src/window.js";
 import { checkAutoStart, setResumeHandledStatus, setSleepHandledStatus } from "./src/power.js";
 
-if (config.get("highDPIMode")) {
-	app.commandLine.appendSwitch('high-dpi-support', 'true');
-}
+process.on("uncaughtException", (err) => {
+    logger.error(`uncaughtException: ${err.stack}`);
+});
 
-if (config.get("forceScaling")) {
-	app.commandLine.appendSwitch('force-device-scaling-factor', config.get("scaleFactor"));
-}
+process.on("unhandledRejection", (reason) => {
+    logger.error(`unhandledRejection: ${reason}`);
+});
 
+app.commandLine.appendSwitch('disk-cache-size', '104857600');
 
 logger.errorHandler.startCatching();
 logger.info(`${app.name} started`);
 logger.info(`Platform: ${process.platform} ${process.arch}`);
+if (process.platform === "linux") {
+    const isWayland = !!process.env.WAYLAND_DISPLAY;
+    const desktopEnv = process.env.XDG_CURRENT_DESKTOP || 'unknown';
+    
+    logger.info(`Desktop: ${desktopEnv} | Session: ${isWayland ? 'Wayland' : 'X11'}`);
+    
+    if (isWayland) {
+        logger.warn('ENV | Programmatic window positioning is unavailable on Wayland');
+        logger.warn('ENV | Launch with --enable-features=UseOzonePlatform --ozone-platform=x11 for best performance');
+    }
+}
 
 if (process.platform === "darwin") {
 	app.dock.hide();
@@ -70,11 +81,7 @@ app.whenReady().then(async () => {
 			toggleFullScreen();
 		});
 	}
-
-	if (!config.has("currentInstance")) {
-		config.set("disableHover", true);
-	}
-
+	
 	if (!config.has("autoUpdate")) {
 		config.set("autoUpdate", true);
 	}
